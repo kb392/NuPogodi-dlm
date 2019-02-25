@@ -308,6 +308,108 @@ public:
         return 0;
     }
 
+    RSL_METHOD_DECL(ReadQueue) {
+        char * queue_name = rsGetStringParam(1,NULL); // нет значения по умолчанию
+        if (socket_open()) {
+
+            amqp_basic_consume(conn,                            // state connection state
+                               1,                               // channel the channel to do the RPC on
+                               amqp_cstring_bytes(queue_name),  // queue
+                               amqp_empty_bytes,                // consumer_tag
+                               0,                               // no_local
+                               0,                               // no_ack
+                               0,                               // exclusive
+                               amqp_empty_table);               // arguments
+
+            if(!set_socket_error(amqp_get_rpc_reply(conn), "Consuming"))
+                return 0;
+
+                for (int retry=0;;retry++) {
+                    struct timeval timeout;
+                    timeout.tv_sec=60;
+
+                    print("%i\r\n",retry);
+
+                    amqp_rpc_reply_t res;
+                    amqp_envelope_t envelope;
+
+                    amqp_maybe_release_buffers(conn);
+
+                    res = amqp_consume_message(conn, &envelope, NULL, 0);
+
+                    MsgBox("R");
+
+                    if (AMQP_RESPONSE_NONE == res.reply_type) {
+                        print("EOF\r\n");
+                        break;
+                    }
+
+                    if (AMQP_RESPONSE_NORMAL != res.reply_type) {
+                        break;
+                    }
+
+                    print("Delivery %u, exchange %.*s routingkey %.*s\n",
+                           (unsigned)envelope.delivery_tag, (int)envelope.exchange.len,
+                           (char *)envelope.exchange.bytes, (int)envelope.routing_key.len,
+                           (char *)envelope.routing_key.bytes);
+
+                    if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
+                      print("Content-type: %.*s\n",
+                             (int)envelope.message.properties.content_type.len,
+                             (char *)envelope.message.properties.content_type.bytes);
+                    }
+                    print("----\n");
+
+                    //amqp_dump(envelope.message.body.bytes, envelope.message.body.len);
+
+                    amqp_destroy_envelope(&envelope);
+                    print("envelope destoyed\n");
+                }
+                print("after loop\n");
+
+
+            }
+        return 0;
+    }
+
+
+    RSL_METHOD_DECL(ReadMessage) {
+        char * queue_name = rsGetStringParam(1,NULL); // нет значения по умолчанию
+        if (socket_open()) {
+
+            amqp_rpc_reply_t res = amqp_basic_get(conn, 1, amqp_cstring_bytes(queue_name), 1);
+
+            if (res.reply.id == AMQP_BASIC_GET_EMPTY_METHOD) {
+                return 0;
+            }
+
+            amqp_message_t message;
+            amqp_rpc_reply_t reply = amqp_read_message(conn, 1, &message, 0);
+            if (AMQP_RESPONSE_NORMAL != reply.reply_type) {
+                return 0;
+            }
+
+            int char_count = MultiByteToWideChar(CP_UTF8, 0, (char *)message.body.bytes, message.body.len, NULL, 0);
+            if(char_count > 0 && char_count != 0xFFFD) {
+                wchar_t * wbuff= (wchar_t *)malloc(char_count*sizeof(wchar_t));
+                MultiByteToWideChar(CP_UTF8, 0, (char *)message.body.bytes, message.body.len, wbuff, char_count);
+                char * message_buff=(char *)malloc((char_count+1)*sizeof(char));
+                WideCharToMultiByte(866, 0, wbuff, char_count, message_buff, char_count, 0, 0);
+                message_buff[char_count]='\0';
+                free(wbuff);
+                ValueSet (retVal,V_STRING,(void *)message_buff);
+            } else {
+                ValueSet (retVal,V_STRING,"");
+            }
+            amqp_destroy_message(&message);
+            return 0;
+        }
+        int ret=0;
+        ValueSet (retVal,V_BOOL,(void *)&ret);
+        return 0;
+    }
+
+    
     RSL_METHOD_DECL(TestParam) {
         VALUE *vParm;
        
@@ -338,7 +440,7 @@ private:
 
 };
 
-TRslParmsInfo prm2[] = { {V_STRING,0} };
+TRslParmsInfo prmOneStr[] = { {V_STRING,0} };
 
 RSL_CLASS_BEGIN(TNuPogodi)
     RSL_PROP_EX    (host,m_host,-1,V_STRING, 0)
@@ -348,8 +450,10 @@ RSL_CLASS_BEGIN(TNuPogodi)
     RSL_PROP_EX    (exch,m_exch,-1,V_STRING, 0)
 
     RSL_PROP_EX    (error,m_error,-1,V_STRING, VAL_FLAG_RDONLY)
-    RSL_METH_EX    (SendFile, -1,V_BOOL,0,RSLNP(prm2),prm2)
-    RSL_METH_EX    (SendText, -1,V_BOOL,0,RSLNP(prm2),prm2)
+    RSL_METH_EX    (SendFile,   -1,V_BOOL, 0,RSLNP(prmOneStr),prmOneStr)
+    RSL_METH_EX    (SendText,   -1,V_BOOL, 0,RSLNP(prmOneStr),prmOneStr)
+    RSL_METH_EX    (ReadQueue,  -1,V_UNDEF,0,RSLNP(prmOneStr),prmOneStr)
+    RSL_METH_EX    (ReadMessage,-1,V_UNDEF,0,RSLNP(prmOneStr),prmOneStr)
 
     RSL_INIT
 RSL_CLASS_END  
