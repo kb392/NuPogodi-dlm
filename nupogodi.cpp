@@ -1,4 +1,3 @@
-//#define RSL_EXTERN_IMPL
 #include <windows.h>
 #include "rsl/dlmintf.h"
 #include <string>

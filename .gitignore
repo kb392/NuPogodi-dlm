@@ -1,0 +1,8 @@
+*
+!.gitignore
+!mac/
+!mac/*.mac
+!mac/*.dll
+!mac/*.d32
+!*.cpp
+!readme.utf8.txt

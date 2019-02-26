@@ -1,0 +1,24 @@
+import nupogodi;
+var i;
+var ret;
+var o=TNuPogodi();
+
+PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
+
+o.host="127.0.0.1";
+o.exch="ex1";
+
+PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
+
+for (i,1,10,1)
+
+
+    ret=o.SendText("Привет, мир "+String(i:o:4));
+    if (ret)
+        PrintLN(ret);
+    else
+        PrintLN(o.error);
+
+    end;
+end;
+                         
