@@ -11,7 +11,7 @@ char * rsGetStringParam(int iParam, char * defStr) {
         if(defStr)
             return defStr;
         else
-            RslError("Параметр №%i должен быть строкой",(iParam+1));
+            RslError("╨Я╨░╤А╨░╨╝╨╡╤В╤А тДЦ%i ╨┤╨╛╨╗╨╢╨╡╨╜ ╨▒╤Л╤В╤М ╤Б╤В╤А╨╛╨║╨╛╨╣",(iParam+1));
         }
     return vString->value.string;
 }
@@ -19,7 +19,7 @@ char * rsGetStringParam(int iParam, char * defStr) {
 char * rsGetFilePathParam(int iParam) {
     VALUE *vFilePath;
     if (!GetParm (iParam,&vFilePath) || vFilePath->v_type != V_STRING)
-        RslError("Параметр №%i должен быть строкой",(iParam+1));
+        RslError("╨Я╨░╤А╨░╨╝╨╡╤В╤А тДЦ%i ╨┤╨╛╨╗╨╢╨╡╨╜ ╨▒╤Л╤В╤М ╤Б╤В╤А╨╛╨║╨╛╨╣",(iParam+1));
     char * sPath=(char *)malloc(sizeof(char)*strlen(vFilePath->value.string)+sizeof(char));
     OemToCharBuff(vFilePath->value.string, sPath, strlen(vFilePath->value.string));
     sPath[strlen(vFilePath->value.string)]='\0';
@@ -29,7 +29,7 @@ char * rsGetFilePathParam(int iParam) {
 char * nupogodiGetFileContent(const char * sFilePath) {
     FILE *f = fopen(sFilePath, "rb");
     if (f==NULL) 
-        RslError("Ошибка при открытии файла %s", sFilePath);
+        RslError("╨Ю╤И╨╕╨▒╨║╨░ ╨┐╤А╨╕ ╨╛╤В╨║╤А╤Л╤В╨╕╨╕ ╤Д╨░╨╣╨╗╨░ %s", sFilePath);
 
     fseek(f, 0, SEEK_END);
     size_t fsize = ftell(f);
@@ -300,13 +300,13 @@ public:
         retVal->value.boolval=0;
 
         if (socket_open()) {
-            char * message_in = rsGetStringParam(1,"");                     // текст из RS в кодировке 866
+            char * message_in = rsGetStringParam(1,"");                     // ╤В╨╡╨║╤Б╤В ╨╕╨╖ RS ╨▓ ╨║╨╛╨┤╨╕╤А╨╛╨▓╨║╨╡ 866
 
-            int message_len=strlen(message_in);                            // кол-во символов
-            wchar_t * message_buff= (wchar_t *)malloc(2*(message_len+1));  // промежуточный буфер в UTF-16
+            int message_len=strlen(message_in);                            // ╨║╨╛╨╗-╨▓╨╛ ╤Б╨╕╨╝╨▓╨╛╨╗╨╛╨▓
+            wchar_t * message_buff= (wchar_t *)malloc(2*(message_len+1));  // ╨┐╤А╨╛╨╝╨╡╨╢╤Г╤В╨╛╤З╨╜╤Л╨╣ ╨▒╤Г╤Д╨╡╤А ╨▓ UTF-16
             MultiByteToWideChar( CP_OEMCP, 0, message_in, -1, message_buff, message_len+1);        // 866 -> UTF-16
-            size_t messagebody_len=WideCharToMultiByte( CP_UTF8, 0, message_buff, -1, NULL, 0, 0, 0); // определяем, сколько байт будет занимать сообщение в UTF-8
-            char * messagebody = (char *)malloc(messagebody_len);        // сообщения для передачи в кролика в UTF-8
+            size_t messagebody_len=WideCharToMultiByte( CP_UTF8, 0, message_buff, -1, NULL, 0, 0, 0); // ╨╛╨┐╤А╨╡╨┤╨╡╨╗╤П╨╡╨╝, ╤Б╨║╨╛╨╗╤М╨║╨╛ ╨▒╨░╨╣╤В ╨▒╤Г╨┤╨╡╤В ╨╖╨░╨╜╨╕╨╝╨░╤В╤М ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡ ╨▓ UTF-8
+            char * messagebody = (char *)malloc(messagebody_len);        // ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╤П ╨┤╨╗╤П ╨┐╨╡╤А╨╡╨┤╨░╤З╨╕ ╨▓ ╨║╤А╨╛╨╗╨╕╨║╨░ ╨▓ UTF-8
             WideCharToMultiByte( CP_UTF8, 0, message_buff, -1, messagebody, messagebody_len, 0, 0);  // UTF-16 -> UTF-8
             free(message_buff);
 
@@ -332,7 +332,7 @@ public:
     }
 
     RSL_METHOD_DECL(OpenQueue) {
-        char * queue_name = rsGetStringParam(1, NULL); // нет значения по умолчанию
+        char * queue_name = rsGetStringParam(1, NULL); // ╨╜╨╡╤В ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╨┐╨╛ ╤Г╨╝╨╛╨╗╤З╨░╨╜╨╕╤О
 
         flag_queue_opened = 0;
         if (socket_open()) {
@@ -379,7 +379,7 @@ public:
 
         res = amqp_consume_message(conn, &envelope, &timeout, 0);
            
-        m_last_result.value.intval = res.reply_type; // сохраняем полученное значение кода возврата в свойство
+        m_last_result.value.intval = res.reply_type; // ╤Б╨╛╤Е╤А╨░╨╜╤П╨╡╨╝ ╨┐╨╛╨╗╤Г╤З╨╡╨╜╨╜╨╛╨╡ ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡ ╨║╨╛╨┤╨░ ╨▓╨╛╨╖╨▓╤А╨░╤В╨░ ╨▓ ╤Б╨▓╨╛╨╣╤Б╤В╨▓╨╛
         m_library_error.value.intval = res.library_error;
 
         set_socket_error(res, "Getting envelop from queue");
@@ -460,7 +460,7 @@ public:
 
     RSL_METHOD_DECL(ReadMessage) {
         last_delivery_tag = 0;
-        char * queue_name = rsGetStringParam(1,NULL); // нет значения по умолчанию
+        char * queue_name = rsGetStringParam(1,NULL); // ╨╜╨╡╤В ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╨┐╨╛ ╤Г╨╝╨╛╨╗╤З╨░╨╜╨╕╤О
         if (socket_open()) {
 
             amqp_rpc_reply_t res = amqp_basic_get(conn, 1, amqp_cstring_bytes(queue_name), m_auto_ack.value.intval);
@@ -504,31 +504,6 @@ public:
         return 0;
     }
 
-    /*
-    RSL_GETPROP_DECL(route)  { 
-        VALUE * pv=PushValue(NULL);
-        if (Route.empty()) {
-            void * r=NULL;
-            ValueSet (pv,V_UNDEF,(void *)&r);
-        }
-        else
-            ValueSet (pv,V_STRING,(void *)Route.c_str());
-        //CharToOem(pv->value.string, pv->value.string);
-        ReturnVal2 (pv);
-        PopValue();
-        return 0;
-    }
-    */
-    /*
-    RSL_PUTPROP_DECL(xmlLocale) {
-        if (newVal->v_type == V_STRING)
-            Route=std::string (newVal->value.string);
-        return 0;
-    }
-    */
-
-
-
     
     RSL_METHOD_DECL(TestParam) {
         VALUE *vParm;
@@ -551,16 +526,15 @@ private:
     VALUE m_pass;
     VALUE m_error;
     VALUE m_exch;
-    VALUE m_auto_ack; // 1 - сообщения подтверждаются при получении, 0 - после обработки надо вызывать Ack
+    VALUE m_auto_ack; // 1 - ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╤П ╨┐╨╛╨┤╤В╨▓╨╡╤А╨╢╨┤╨░╤О╤В╤Б╤П ╨┐╤А╨╕ ╨┐╨╛╨╗╤Г╤З╨╡╨╜╨╕╨╕, 0 - ╨┐╨╛╤Б╨╗╨╡ ╨╛╨▒╤А╨░╨▒╨╛╤В╨║╨╕ ╨╜╨░╨┤╨╛ ╨▓╤Л╨╖╤Л╨▓╨░╤В╤М Ack
     VALUE m_last_result;
-    VALUE m_queue_timeout;  // после этого ожидания управление возвращается в RSL, даже если сообщение не получено
+    VALUE m_queue_timeout;  // ╨┐╨╛╤Б╨╗╨╡ ╤Н╤В╨╛╨│╨╛ ╨╛╨╢╨╕╨┤╨░╨╜╨╕╤П ╤Г╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╡ ╨▓╨╛╨╖╨▓╤А╨░╤Й╨░╨╡╤В╤Б╤П ╨▓ RSL, ╨┤╨░╨╢╨╡ ╨╡╤Б╨╗╨╕ ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╡ ╨╜╨╡ ╨┐╨╛╨╗╤Г╤З╨╡╨╜╨╛
     VALUE m_library_error;
     char error_buffer[256];
     amqp_connection_state_t conn;
     amqp_socket_t * socket = NULL;
     bool flag_init=0;
-    uint64_t last_delivery_tag = 0;  // delivery_tag последнего полученного сообщения
-    //int auto_ack = 1;                // 1 - сообщения подтверждаются при получении, 0 - после обработки надо вызывать Ack
+    uint64_t last_delivery_tag = 0;  // delivery_tag ╨┐╨╛╤Б╨╗╨╡╨┤╨╜╨╡╨│╨╛ ╨┐╨╛╨╗╤Г╤З╨╡╨╜╨╜╨╛╨│╨╛ ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╤П
     char last_routing_key[256];  // 
     char last_exchange[256];  // 
     char consumer_tag[32];
@@ -590,9 +564,7 @@ RSL_CLASS_BEGIN(TNuPogodi)
     RSL_METH_EX    (ReadQueue,   -1, V_UNDEF, 0, RSLNP(prmOneStr), prmOneStr)
     RSL_METH_EX    (ReadMessage, -1, V_UNDEF, 0, RSLNP(prmOneStr), prmOneStr)
 
-    RSL_PROP_METH (RouteKey)
-
-    //RSL_PROP_METH2 (route)
+    RSL_PROP_METH  (RouteKey)
 
     RSL_INIT
 RSL_CLASS_END  

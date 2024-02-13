@@ -1,0 +1,3 @@
+*.mac text working-tree-encoding=cp866 encoding=cp866 eol=crlf
+*.cpp text working-tree-encoding=cp866 encoding=cp866 eol=crlf
+*.d32 binary
