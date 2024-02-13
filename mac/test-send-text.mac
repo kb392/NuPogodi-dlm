@@ -1,10 +1,8 @@
 import nupogodi;
 var i;
-var N = 100000;
+var N = 1000000;
 var ret;
 var o=TNuPogodi();
-
-PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
 
 o.host="127.0.0.1";
 o.exch="ex1";
@@ -13,15 +11,8 @@ PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
 
 InitProgress(N);
 for (i,1,N,1)
-    ret=o.SendFile("hello.txt", "key.msg."+String(i:o:6));
-    if (ret)
-        PrintLN(ret);
-    else
-        PrintLN(o.error);
 
-    end;
-
-    ret=o.SendText("Привет, мир "+String(i:o:4), "key.file."+String(i:o:6));
+    ret=o.SendText("{\"message_number\":" + String(i)+ ", \"user_number\":" + UserNumber() +"}", "key."+String(UserNumber():o:10)+"."+String(i:o:10));
     if (ret)
         PrintLN(ret);
     else

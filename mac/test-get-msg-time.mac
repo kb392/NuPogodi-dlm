@@ -1,6 +1,9 @@
 import nupogodi;
+import doctor; 
+
 var i;
 var ret;
+var t;
 var o=TNuPogodi();
 
 PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
@@ -10,15 +13,14 @@ o.exch="ex1";
 
 PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
 
-for (i,1,10,1)
+t = dcGetCurrentTime();
 
+ret=o.ReadMessage("tu1");
 
-    ret=o.SendText("Привет, мир "+String(i:o:4));
-    if (ret)
-        PrintLN(ret);
-    else
-        PrintLN(o.error);
-
-    end;
+PrintLN(String(dcGetCurrentTime() - t) + " ms");
+if (ret)
+    PrintLN("OK " + ret);
+else
+    PrintLN("ERR "+ o.error);
 end;
                          

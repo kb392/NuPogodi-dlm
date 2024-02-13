@@ -6,15 +6,15 @@ var o=TNuPogodi();
 PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
 
 o.host="127.0.0.1";
-o.exch="amq.direct";
+o.exch="amq.direct"; // в обменник по-умолчанию
 
 PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
 
-    ret=o.SendText("�ਢ��, ��� "+String(i:o:4));
-    if (ret)
-        PrintLN(ret);
-    else
-        PrintLN(o.error);
+ret=o.SendText("Привет, мир "+String(i:o:4));
+if (ret)
+    PrintLN(ret);
+else
+    PrintLN(o.error);
 
-    end;
+end;
                          

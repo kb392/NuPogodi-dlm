@@ -14,7 +14,7 @@ char * rsGetStringParam(int iParam, char * defStr) {
             RslError("Параметр №%i должен быть строкой",(iParam+1));
         }
     return vString->value.string;
-    }
+}
 
 char * rsGetFilePathParam(int iParam) {
     VALUE *vFilePath;
@@ -24,7 +24,7 @@ char * rsGetFilePathParam(int iParam) {
     OemToCharBuff(vFilePath->value.string, sPath, strlen(vFilePath->value.string));
     sPath[strlen(vFilePath->value.string)]='\0';
     return sPath;
-    }
+}
 
 char * nupogodiGetFileContent(const char * sFilePath) {
     FILE *f = fopen(sFilePath, "rb");
@@ -39,11 +39,11 @@ char * nupogodiGetFileContent(const char * sFilePath) {
     if(messagebody = (char *)malloc(fsize + 1)) { 
         fread(messagebody, fsize, 1, f);
         messagebody[fsize] = 0;
-        }
+    }
     fclose(f);
 
     return messagebody;
-    }
+}
 
 
 class  TNuPogodi {
@@ -206,12 +206,32 @@ public:
       ValueMake (&m_exch);
       ValueSet (&m_exch,V_STRING,"");
 
+      ValueMake (&m_auto_ack);
+      m_auto_ack.v_type=V_INTEGER;
+      m_auto_ack.value.intval=1;
+
+      ValueMake (&m_last_result);
+      m_last_result.v_type=V_INTEGER;
+      m_last_result.value.intval = 0;
+
+      ValueMake (&m_library_error);
+      m_library_error.v_type=V_INTEGER;
+      m_library_error.value.intval = 0;
+
+      ValueMake (&m_queue_timeout);
+      m_queue_timeout.v_type=V_INTEGER;
+      m_queue_timeout.value.intval = 60;
+
+
+      
       //ValueMake (&m_error);
       //m_error.v_type=V_UNDEF;
 
       m_error.v_type=V_STRING;
       m_error.value.string=error_buffer;
       *error_buffer='\0';
+
+      sprintf(consumer_tag, "rsl%08i", UserNumber());      
 
       }
 
@@ -223,6 +243,10 @@ public:
       ValueClear (&m_pass);
       ValueClear (&m_exch);
       ValueClear (&m_error);
+      ValueClear (&m_auto_ack);
+      ValueClear (&m_last_result);
+      ValueClear (&m_library_error);
+
       close_socket();
       }
 
@@ -307,76 +331,139 @@ public:
         return 0;
     }
 
-    RSL_METHOD_DECL(ReadQueue) {
-        char * queue_name = rsGetStringParam(1,NULL); // нет значения по умолчанию
+    RSL_METHOD_DECL(OpenQueue) {
+        char * queue_name = rsGetStringParam(1, NULL); // нет значения по умолчанию
+
+        flag_queue_opened = 0;
         if (socket_open()) {
 
             amqp_basic_consume(conn,                            // state connection state
                                1,                               // channel the channel to do the RPC on
                                amqp_cstring_bytes(queue_name),  // queue
-                               amqp_empty_bytes,                // consumer_tag
+                               amqp_cstring_bytes(consumer_tag), // consumer_tag (was amqp_empty_bytes)
                                0,                               // no_local
                                0,                               // no_ack
                                0,                               // exclusive
                                amqp_empty_table);               // arguments
 
-            if(!set_socket_error(amqp_get_rpc_reply(conn), "Consuming"))
-                return 0;
+            if (set_socket_error(amqp_get_rpc_reply(conn), "Consuming"))
+                flag_queue_opened = 1;
 
-                for (int retry=0;;retry++) {
-                    struct timeval timeout;
-                    timeout.tv_sec=60;
+        }
 
-                    print("%i\r\n",retry);
+        ReturnVal (V_BOOL, &flag_queue_opened);
 
-                    amqp_rpc_reply_t res;
-                    amqp_envelope_t envelope;
-
-                    amqp_maybe_release_buffers(conn);
-
-                    res = amqp_consume_message(conn, &envelope, NULL, 0);
-
-                    MsgBox("R");
-
-                    if (AMQP_RESPONSE_NONE == res.reply_type) {
-                        print("EOF\r\n");
-                        break;
-                    }
-
-                    if (AMQP_RESPONSE_NORMAL != res.reply_type) {
-                        break;
-                    }
-
-                    print("Delivery %u, exchange %.*s routingkey %.*s\n",
-                           (unsigned)envelope.delivery_tag, (int)envelope.exchange.len,
-                           (char *)envelope.exchange.bytes, (int)envelope.routing_key.len,
-                           (char *)envelope.routing_key.bytes);
-
-                    if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
-                      print("Content-type: %.*s\n",
-                             (int)envelope.message.properties.content_type.len,
-                             (char *)envelope.message.properties.content_type.bytes);
-                    }
-                    print("----\n");
-
-                    //amqp_dump(envelope.message.body.bytes, envelope.message.body.len);
-
-                    amqp_destroy_envelope(&envelope);
-                    print("envelope destoyed\n");
-                }
-                print("after loop\n");
-
-
-            }
         return 0;
     }
 
+    RSL_METHOD_DECL(ReadQueue) {
+
+        if (!flag_queue_opened) {
+            _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "NUPOGODI ERROR. use OpenQueue before ReadQueue");
+            return 0;
+        }
+
+        last_delivery_tag = 0;
+        m_last_result.value.intval = 0;
+        m_library_error.value.intval = 0;
+
+        struct timeval timeout;
+        //memset(&timeout,0,sizeof(timeout));
+        timeout.tv_sec = m_queue_timeout.value.intval;
+        timeout.tv_usec = 0;
+
+        amqp_rpc_reply_t res;
+        amqp_envelope_t envelope;
+
+        amqp_maybe_release_buffers(conn);
+
+        res = amqp_consume_message(conn, &envelope, &timeout, 0);
+           
+        m_last_result.value.intval = res.reply_type; // сохраняем полученное значение кода возврата в свойство
+        m_library_error.value.intval = res.library_error;
+
+        set_socket_error(res, "Getting envelop from queue");
+
+        if (AMQP_RESPONSE_NONE == res.reply_type) {
+            return 0;
+        }
+
+        if (AMQP_RESPONSE_LIBRARY_EXCEPTION == res.reply_type &&
+            AMQP_STATUS_UNEXPECTED_STATE    == res.library_error) {
+            amqp_frame_t frame;
+            amqp_simple_wait_frame(conn, &frame);
+            return 0;
+        }
+
+        if (AMQP_RESPONSE_NORMAL != res.reply_type) {
+            return 0;
+        }
+
+        last_delivery_tag = envelope.delivery_tag;
+        strncpy(last_routing_key, (char *)envelope.routing_key.bytes, min(envelope.routing_key.len, sizeof(last_routing_key)-1));
+        last_routing_key[min(envelope.routing_key.len, sizeof(last_routing_key)-1)] = '\0';
+        print("key [%s]\n", last_routing_key);
+        strncpy(last_exchange,    (char *)envelope.exchange.bytes,    min(envelope.exchange.len,    sizeof(last_exchange)-1));
+        last_exchange[min(envelope.exchange.len, sizeof(last_exchange)-1)] = '\0';
+
+        //print("Delivery %u, exchange %.*s routingkey %.*s\n",
+        //       (unsigned)envelope.delivery_tag, (int)envelope.exchange.len,
+        //       (char *)envelope.exchange.bytes, (int)envelope.routing_key.len,
+        //       (char *)envelope.routing_key.bytes);
+
+        //if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
+        //  print("Content-type: %.*s\n",
+        //         (int)envelope.message.properties.content_type.len,
+        //         (char *)envelope.message.properties.content_type.bytes);
+        //}
+
+        if (AMQP_RESPONSE_NORMAL == res.reply_type) {
+
+            int char_count = MultiByteToWideChar(CP_UTF8, 0, (char *)envelope.message.body.bytes, envelope.message.body.len, NULL, 0);
+            if(char_count > 0 && char_count != 0xFFFD) {
+                wchar_t * wbuff= (wchar_t *)malloc(char_count*sizeof(wchar_t));
+                MultiByteToWideChar(CP_UTF8, 0, (char *)envelope.message.body.bytes, envelope.message.body.len, wbuff, char_count);
+                char * message_buff=(char *)malloc((char_count+1)*sizeof(char));
+                WideCharToMultiByte(866, 0, wbuff, char_count, message_buff, char_count, 0, 0);
+                message_buff[char_count]='\0';
+                free(wbuff);
+                ValueSet (retVal,V_STRING,(void *)message_buff);
+                free(message_buff);
+            } else {
+                ValueSet (retVal,V_STRING,"");
+            }
+
+            if (m_auto_ack.value.intval) {
+                if (0 == amqp_basic_ack(conn, 1, last_delivery_tag, false)) {
+                    last_delivery_tag = 0;
+                }
+            }
+
+        }
+
+        amqp_destroy_envelope(&envelope);
+
+        return 0;
+    }
+
+    RSL_METHOD_DECL(Ack) {
+        int ret = 0;
+        if (last_delivery_tag) {
+            if (0 == amqp_basic_ack(conn, 1, last_delivery_tag, false)) {
+                last_delivery_tag = 0;
+                ret = 1;
+            }
+        }
+        ReturnVal (V_BOOL, &ret);
+        return 0;
+    }
 
     RSL_METHOD_DECL(ReadMessage) {
+        last_delivery_tag = 0;
         char * queue_name = rsGetStringParam(1,NULL); // нет значения по умолчанию
         if (socket_open()) {
 
-            amqp_rpc_reply_t res = amqp_basic_get(conn, 1, amqp_cstring_bytes(queue_name), 1);
+            amqp_rpc_reply_t res = amqp_basic_get(conn, 1, amqp_cstring_bytes(queue_name), m_auto_ack.value.intval);
 
             if (res.reply.id == AMQP_BASIC_GET_EMPTY_METHOD) {
                 return 0;
@@ -389,7 +476,7 @@ public:
             }
 
             int char_count = MultiByteToWideChar(CP_UTF8, 0, (char *)message.body.bytes, message.body.len, NULL, 0);
-            if(char_count > 0 && char_count != 0xFFFD) {
+            if (char_count > 0 && char_count != 0xFFFD) {
                 wchar_t * wbuff= (wchar_t *)malloc(char_count*sizeof(wchar_t));
                 MultiByteToWideChar(CP_UTF8, 0, (char *)message.body.bytes, message.body.len, wbuff, char_count);
                 char * message_buff=(char *)malloc((char_count+1)*sizeof(char));
@@ -408,6 +495,40 @@ public:
         return 0;
     }
 
+
+    RSL_GETPROP_DECL(RouteKey)  { 
+        VALUE * pv = PushValue(NULL);
+        ValueSet (pv, V_STRING, (void *)last_routing_key);
+        ReturnVal2 (pv);
+        PopValue();
+        return 0;
+    }
+
+    /*
+    RSL_GETPROP_DECL(route)  { 
+        VALUE * pv=PushValue(NULL);
+        if (Route.empty()) {
+            void * r=NULL;
+            ValueSet (pv,V_UNDEF,(void *)&r);
+        }
+        else
+            ValueSet (pv,V_STRING,(void *)Route.c_str());
+        //CharToOem(pv->value.string, pv->value.string);
+        ReturnVal2 (pv);
+        PopValue();
+        return 0;
+    }
+    */
+    /*
+    RSL_PUTPROP_DECL(xmlLocale) {
+        if (newVal->v_type == V_STRING)
+            Route=std::string (newVal->value.string);
+        return 0;
+    }
+    */
+
+
+
     
     RSL_METHOD_DECL(TestParam) {
         VALUE *vParm;
@@ -420,39 +541,58 @@ public:
             print ("no param\n");
             }
         return 0;
-        }
+    }
 
 
 private:
-    char name [40];
     VALUE m_host;
     VALUE m_port;
     VALUE m_user;
     VALUE m_pass;
     VALUE m_error;
     VALUE m_exch;
+    VALUE m_auto_ack; // 1 - сообщения подтверждаются при получении, 0 - после обработки надо вызывать Ack
+    VALUE m_last_result;
+    VALUE m_queue_timeout;  // после этого ожидания управление возвращается в RSL, даже если сообщение не получено
+    VALUE m_library_error;
     char error_buffer[256];
     amqp_connection_state_t conn;
     amqp_socket_t * socket = NULL;
     bool flag_init=0;
-
+    uint64_t last_delivery_tag = 0;  // delivery_tag последнего полученного сообщения
+    //int auto_ack = 1;                // 1 - сообщения подтверждаются при получении, 0 - после обработки надо вызывать Ack
+    char last_routing_key[256];  // 
+    char last_exchange[256];  // 
+    char consumer_tag[32];
+    int flag_queue_opened = 0;
 
 };
 
 TRslParmsInfo prmOneStr[] = { {V_STRING,0} };
 
 RSL_CLASS_BEGIN(TNuPogodi)
-    RSL_PROP_EX    (host,m_host,-1,V_STRING, 0)
-    RSL_PROP_EX    (port,m_port,-1,V_INTEGER,0)
-    RSL_PROP_EX    (user,m_user,-1,V_STRING, 0)
-    RSL_PROP_EX    (pass,m_pass,-1,V_STRING, 0)
-    RSL_PROP_EX    (exch,m_exch,-1,V_STRING, 0)
+    RSL_PROP_EX    (host,    m_host,    -1, V_STRING,  0)
+    RSL_PROP_EX    (port,    m_port,    -1, V_INTEGER, 0)
+    RSL_PROP_EX    (user,    m_user,    -1, V_STRING,  0)
+    RSL_PROP_EX    (pass,    m_pass,    -1, V_STRING,  0)
+    RSL_PROP_EX    (exch,    m_exch,    -1, V_STRING,  0)
+    RSL_PROP_EX    (AutoAck, m_auto_ack,-1, V_INTEGER, 0)
+    RSL_PROP_EX    (QueueTimeout, m_queue_timeout,-1, V_INTEGER, 0)
 
-    RSL_PROP_EX    (error,m_error,-1,V_STRING, VAL_FLAG_RDONLY)
-    RSL_METH_EX    (SendFile,   -1,V_BOOL, 0,RSLNP(prmOneStr),prmOneStr)
-    RSL_METH_EX    (SendText,   -1,V_BOOL, 0,RSLNP(prmOneStr),prmOneStr)
-    RSL_METH_EX    (ReadQueue,  -1,V_UNDEF,0,RSLNP(prmOneStr),prmOneStr)
-    RSL_METH_EX    (ReadMessage,-1,V_UNDEF,0,RSLNP(prmOneStr),prmOneStr)
+    RSL_PROP_EX    (error,          m_error,         -1, V_STRING,  VAL_FLAG_RDONLY)
+    RSL_PROP_EX    (LastResultCode, m_last_result,   -1, V_INTEGER, VAL_FLAG_RDONLY)
+    RSL_PROP_EX    (LibraryError,   m_library_error, -1, V_INTEGER, VAL_FLAG_RDONLY)
+
+    RSL_METH_EX    (SendFile,    -1, V_BOOL,  0, RSLNP(prmOneStr), prmOneStr)
+    RSL_METH_EX    (SendText,    -1, V_BOOL,  0, RSLNP(prmOneStr), prmOneStr)
+    RSL_METH_EX    (Ack,         -1, V_BOOL,  0, RSLNP(prmOneStr), prmOneStr)
+    RSL_METH_EX    (OpenQueue,   -1, V_BOOL,  0, RSLNP(prmOneStr), prmOneStr)
+    RSL_METH_EX    (ReadQueue,   -1, V_UNDEF, 0, RSLNP(prmOneStr), prmOneStr)
+    RSL_METH_EX    (ReadMessage, -1, V_UNDEF, 0, RSLNP(prmOneStr), prmOneStr)
+
+    RSL_PROP_METH (RouteKey)
+
+    //RSL_PROP_METH2 (route)
 
     RSL_INIT
 RSL_CLASS_END  

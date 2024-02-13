@@ -4,5 +4,6 @@
 !mac/*.mac
 !mac/*.dll
 !mac/*.d32
+!mac/hello.txt
 !*.cpp
 !readme.utf8.txt

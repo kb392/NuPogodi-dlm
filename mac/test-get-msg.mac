@@ -10,11 +10,10 @@ o.exch="ex1";
 
 PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
 
-    // ret=o.ReadQueue("tu1");
-    ret=o.ReadMessage("tu1");
-    if (ret)
-        PrintLN("OK " + ret);
-    else
-        PrintLN("ERR "+ o.error);
-    end;
+ret=o.ReadMessage("tu1");
+if (ret)
+    PrintLN("OK " + ret);
+else
+    PrintLN("ERR "+ o.error);
+end;
                          

@@ -1,0 +1,53 @@
+import nupogodi;
+import doctor; 
+import "ampq_const.mac";
+
+var i = 0;
+var ret;
+var t1, t2;
+var o=TNuPogodi();
+//o.AutoAck = 1; // если установлено AutoAck = 1, то сообщение надо подтвердить после обработки, вызвав метод Ack()
+o.AutoAck = 0; // если установлено AutoAck = 0, то сообщение подтверждается при приёме, дополнительного подтверждения не требуется
+o.QueueTimeout = 15; // через это кол-во секунд управление будет возвращаться в RSL
+
+o.host="127.0.0.1";
+o.exch="ex1";
+
+PrintLN(o.user + ":" + o.pass + "@" + o.host + ":" + o.port + " " + o.AutoAck + " " + o.QueueTimeout);
+
+if (o.OpenQueue("tu1"))  // подписываемся на получение сообщений из очереди
+    InitProgress(3);
+    while (1)
+        t1 = dcGetCurrentTime();
+        ret = o.ReadQueue();
+        t2 = dcGetCurrentTime();
+        if (ValType(ret) == V_STRING)
+            // сообщение получено, его надо обработать
+            PrintLN(String(t2-t1), " ms");
+            PrintLN("OK. \nMESSAGE:\n",  ret);
+            PrintLN("Key ",  o.RouteKey);
+            if (not o.AutoAck) 
+                // подтверждаем, если установлен соответствующий режим
+                PrintLN("Ack: ", o.Ack());
+            end;
+        elif ((o.LastResultCode == AMQP_RESPONSE_LIBRARY_EXCEPTION) and (o.LibraryError == AMQP_STATUS_TIMEOUT))
+            // за QueueTimeout не бьыло получено сообщения
+            PrintLN("WAIT");
+        else
+            // произошла ошибка
+            PrintLN("ERR " + " " + o.LastResultCode + " " + o.error);
+        end;
+        i = i + 1;
+        [└────────────────────#######────────────────────┘](i:c);
+        // проверяем, не надо ли нам завершить обработку очереди, потому что была нажата Esc
+        if (TestEvent(0) == 27)
+            break;
+        end;
+        // если не была нажата Esc, то дёргаем прогрессбар 
+        UseProgress(1 + Mod(i,2));
+
+        // и возвращаемся к ожиданию сообщений из очереди
+
+    end;              
+    RemProgress();           
+end;

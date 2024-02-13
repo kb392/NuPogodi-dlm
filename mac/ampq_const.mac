@@ -1,0 +1,38 @@
+const AMQP_RESPONSE_NONE    = 0; // the library got an EOF from the socket
+const AMQP_RESPONSE_NORMAL  = 1; // response normal, the RPC completed successfully
+const AMQP_RESPONSE_LIBRARY_EXCEPTION = 2; // library error, an error occurred in the library, examine the library_error
+const AMQP_RESPONSE_SERVER_EXCEPTION  = 3; // server exception, the broker returned an
+
+const AMQP_STATUS_OK = 0;                           // Operation successful
+const AMQP_STATUS_NO_MEMORY = -1;                   // Memory allocation failed
+const AMQP_STATUS_BAD_AMQP_DATA = -2;               // Incorrect or corrupt data was received from the broker. This is a protocol error. 
+const AMQP_STATUS_UNKNOWN_CLASS = -3;               // An unknown AMQP class was received. This is a protocol error.
+const AMQP_STATUS_UNKNOWN_METHOD = -4;              // An unknown AMQP method was received. This is a protocol error.
+const AMQP_STATUS_HOSTNAME_RESOLUTION_FAILED = -5;  // Unable to resolve the hostname
+const AMQP_STATUS_INCOMPATIBLE_AMQP_VERSION = -6;   // The broker advertised an incompaible AMQP version
+const AMQP_STATUS_CONNECTION_CLOSED = -7;           // The connection to the broker has been closed
+                                                        
+const AMQP_STATUS_BAD_URL = -8;                     // malformed AMQP URL
+const AMQP_STATUS_SOCKET_ERROR = -9;                // A socket error occurred
+const AMQP_STATUS_INVALID_PARAMETER = -10;          // An invalid parameter was passed into the function
+const AMQP_STATUS_TABLE_TOO_BIG = -11;              // The amqp_table_t object cannot be serialized because the output buffer is too small
+const AMQP_STATUS_WRONG_METHOD = -12;               // The wrong method was received
+const AMQP_STATUS_TIMEOUT = -13;                    // Operation timed out
+const AMQP_STATUS_TIMER_FAILURE = -14;              // The underlying system timer facility failed
+const AMQP_STATUS_HEARTBEAT_TIMEOUT = -15;          // Timed out waiting for heartbeat
+const AMQP_STATUS_UNEXPECTED_STATE = -16;           // Unexpected protocol state
+const AMQP_STATUS_SOCKET_CLOSED = -17;              // Underlying socket is closed
+const AMQP_STATUS_SOCKET_INUSE = -18;               // Underlying socket is already open
+const AMQP_STATUS_BROKER_UNSUPPORTED_SASL_METHOD = -19; // Broker does not support the requested SASL mechanism
+const AMQP_STATUS_UNSUPPORTED = -20;                // Parameter is unsupported in this version
+// const _AMQP_STATUS_NEXT_VALUE = -21;             // Internal value
+
+const AMQP_STATUS_TCP_ERROR = -256;                  // A generic TCP error occurred
+const AMQP_STATUS_TCP_SOCKETLIB_INIT_ERROR = -257;   // An error occurred trying to initialize the socket library
+// const _AMQP_STATUS_TCP_NEXT_VALUE = -258;         // Internal value
+
+const AMQP_STATUS_SSL_ERROR = -512;                  // A generic SSL error occurred.
+const AMQP_STATUS_SSL_HOSTNAME_VERIFY_FAILED = -513; // SSL validation of hostname against peer certificate failed
+const AMQP_STATUS_SSL_PEER_VERIFY_FAILED = -514;     // SSL validation of peer certificate failed.
+const AMQP_STATUS_SSL_CONNECTION_FAILED = -515;      // SSL handshake failed.
+//const  _AMQP_STATUS_SSL_NEXT_VALUE = -516;         // Internal value
