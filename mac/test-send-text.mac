@@ -6,6 +6,7 @@ var o=TNuPogodi();
 
 o.host="127.0.0.1";
 o.exch="ex1";
+o.ContentType = "application/json";
 
 PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
 

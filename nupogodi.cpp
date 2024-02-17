@@ -222,6 +222,8 @@ public:
       m_queue_timeout.v_type=V_INTEGER;
       m_queue_timeout.value.intval = 60;
 
+      ValueMake(&m_content_type);
+      m_content_type.v_type = V_UNDEF;
 
       
       //ValueMake (&m_error);
@@ -315,7 +317,11 @@ public:
 
                 amqp_basic_properties_t props;
                 props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG | AMQP_BASIC_DELIVERY_MODE_FLAG;
-                props.content_type = amqp_cstring_bytes("text/plain");
+                if (m_content_type.v_type == V_STRING && m_content_type.value.string) {
+                    props.content_type = amqp_cstring_bytes(m_content_type.value.string);
+                } else {
+                    props.content_type = amqp_cstring_bytes("text/plain");
+                }
                 props.delivery_mode = 2; /* persistent delivery mode */
                 if(set_ampq_error(amqp_basic_publish(conn, 1, amqp_cstring_bytes(m_exch.value.string),
                                                     amqp_cstring_bytes(routing_key), 0, 0,
@@ -411,6 +417,13 @@ public:
         //       (char *)envelope.exchange.bytes, (int)envelope.routing_key.len,
         //       (char *)envelope.routing_key.bytes);
 
+        if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
+            ValueSet(&m_content_type, V_STRING, envelope.message.properties.content_type.bytes);
+        } else {
+            int v = 0;
+            ValueSet(&m_content_type, V_UNDEF, &v);
+        }
+
         //if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
         //  print("Content-type: %.*s\n",
         //         (int)envelope.message.properties.content_type.len,
@@ -487,6 +500,14 @@ public:
             } else {
                 ValueSet (retVal,V_STRING,"");
             }
+
+            if (message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
+                ValueSet(&m_content_type, V_STRING, message.properties.content_type.bytes);
+            } else {
+                int v = 0;
+                ValueSet(&m_content_type, V_UNDEF, &v);
+            }
+
             amqp_destroy_message(&message);
             return 0;
         }
@@ -530,6 +551,7 @@ private:
     VALUE m_last_result;
     VALUE m_queue_timeout;  // после этого ожидания управление возвращается в RSL, даже если сообщение не получено
     VALUE m_library_error;
+    VALUE m_content_type;
     char error_buffer[256];
     amqp_connection_state_t conn;
     amqp_socket_t * socket = NULL;
@@ -551,7 +573,8 @@ RSL_CLASS_BEGIN(TNuPogodi)
     RSL_PROP_EX    (pass,    m_pass,    -1, V_STRING,  0)
     RSL_PROP_EX    (exch,    m_exch,    -1, V_STRING,  0)
     RSL_PROP_EX    (AutoAck, m_auto_ack,-1, V_INTEGER, 0)
-    RSL_PROP_EX    (QueueTimeout, m_queue_timeout,-1, V_INTEGER, 0)
+    RSL_PROP_EX    (QueueTimeout, m_queue_timeout, -1, V_INTEGER, 0)
+    RSL_PROP_EX    (ContentType,  m_content_type,  -1, V_STRING,  0)
 
     RSL_PROP_EX    (error,          m_error,         -1, V_STRING,  VAL_FLAG_RDONLY)
     RSL_PROP_EX    (LastResultCode, m_last_result,   -1, V_INTEGER, VAL_FLAG_RDONLY)

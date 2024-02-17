@@ -13,6 +13,9 @@ PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
 ret=o.ReadMessage("tu1");
 if (ret)
     PrintLN("OK " + ret);
+    if (o.ContentType != null)
+        PrintLN("Content-type " + o.ContentType);
+    end;
 else
     PrintLN("ERR "+ o.error);
 end;
