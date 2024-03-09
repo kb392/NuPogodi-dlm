@@ -8,3 +8,4 @@
 !mac/hello.txt
 !*.cpp
 !readme.utf8.txt
+mac/*.nogit.mac

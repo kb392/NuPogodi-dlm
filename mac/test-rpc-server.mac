@@ -1,0 +1,80 @@
+import nupogodi;
+import doctor; 
+import "ampq_const.mac";
+
+private var queue_name = "test_rpc";
+var i = 0;
+var ret;
+var t1, t2;
+var o = TNuPogodi();
+o.AutoAck = 0; // если установлено AutoAck = 0, то сообщение надо подтвердить после обработки, вызвав метод Ack()
+o.QueueTimeout = 15; // через это кол-во секунд управление будет возвращаться в RSL
+
+o.host="127.0.0.1";
+o.exch=""; // default exchange
+
+PrintLN(o.user + ":" + o.pass + "@" + o.host + ":" + o.port + " " + o.AutoAck + " " + o.QueueTimeout);
+
+if (o.OpenQueue(queue_name))  // подписываемся на получение сообщений из очереди
+    InitProgress(3, "press F2 to send message", "RPC server");
+    while (1)
+        t1 = dcGetCurrentTime();
+        ret = o.ReadQueue();
+        t2 = dcGetCurrentTime();
+        if (ValType(ret) == V_STRING)
+
+            // сообщение получено, его надо обработать
+            PrintLN(String(t2-t1), " ms");
+
+            // печатаем текст и ключ маршрутизации, 
+            // считаем, что в этом и состоит наша обработка
+            PrintLN("OK. \nMESSAGE:\n",  ret);
+            if (o.ContentType != null)
+                PrintLN("Content-type " + o.ContentType);
+            end;
+            PrintLN("Key ",  o.RouteKey);
+
+            if (o.ReplyTo == null)
+                PrintLN("Сообщение без reply-to");
+            else
+                PrintLN("Reply-to: ", o.ReplyTo);
+
+                MsgBox("Получено сообщение|" + ret);
+
+                ret = o.SendText("Ответ " + String(i + 1) + " " + String(Time()), o.ReplyTo);
+                if (ret)
+                    PrintLN(ret);
+                else
+                    PrintLN(o.error);
+                end;
+            end;
+
+            if (not o.AutoAck) 
+                // подтверждаем, если установлен соответствующий режим
+                PrintLN("Ack: ", o.Ack());
+            end;
+
+        elif ((o.LastResultCode == AMQP_RESPONSE_LIBRARY_EXCEPTION) and (o.LibraryError == AMQP_STATUS_TIMEOUT))
+            // за QueueTimeout не бьыло получено сообщения
+            PrintLN("WAIT");
+        else
+            // произошла ошибка
+            PrintLN("ERR " + " " + o.LastResultCode + " " + o.error);
+        end;
+        i = i + 1;
+        [└────────────────────#######────────────────────┘](i:c);
+        // проверяем, не надо ли нам завершить обработку очереди, потому что была нажата Esc
+        if (TestEvent(0) == 27)
+            break;
+        end;
+        // если не была нажата Esc, то дёргаем прогрессбар 
+        UseProgress(1 + Mod(i,2));
+
+        // и возвращаемся к ожиданию сообщений из очереди
+
+    end;              
+    RemProgress();           
+else
+    PrintLN("Ошибка подписки на очередь " + queue_name);
+    PrintLN(o.LastResultCode + " " + o.error);
+end;

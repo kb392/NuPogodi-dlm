@@ -45,6 +45,19 @@ char * nupogodiGetFileContent(const char * sFilePath) {
     return messagebody;
 }
 
+void nupogodiAmpqPropToRsVal(amqp_bytes_t rmqprop, VALUE * prsval) {
+    char * p = (char *)iNewMem(rmqprop.len + 1);
+    if (!p) 
+        RslError("memory error");
+
+    memcpy(p, rmqprop.bytes, rmqprop.len);
+    p[rmqprop.len] = '\0';
+
+    ValueClear(prsval);
+    ValueSet(prsval, V_STRING, p);
+
+    iDoneMem(p);
+}
 
 class  TNuPogodi {
 
@@ -210,6 +223,10 @@ public:
       m_auto_ack.v_type=V_INTEGER;
       m_auto_ack.value.intval=1;
 
+      ValueMake (&m_no_ack);
+      m_no_ack.v_type=V_BOOL;
+      m_no_ack.value.boolval = 0;
+
       ValueMake (&m_last_result);
       m_last_result.v_type=V_INTEGER;
       m_last_result.value.intval = 0;
@@ -225,6 +242,8 @@ public:
       ValueMake(&m_content_type);
       m_content_type.v_type = V_UNDEF;
 
+      ValueMake(&m_reply_to);
+      m_content_type.v_type = V_UNDEF;
       
       //ValueMake (&m_error);
       //m_error.v_type=V_UNDEF;
@@ -246,6 +265,7 @@ public:
       ValueClear (&m_exch);
       ValueClear (&m_error);
       ValueClear (&m_auto_ack);
+      ValueClear (&m_no_ack);
       ValueClear (&m_last_result);
       ValueClear (&m_library_error);
 
@@ -263,7 +283,7 @@ public:
         conn=amqp_new_connection();
         //amqp_socket_t *socket = amqp_tcp_socket_new(conn);
         check_socket();
-        }
+    }
                   
 
     RSL_METHOD_DECL(SendFile) {
@@ -319,9 +339,17 @@ public:
                 props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG | AMQP_BASIC_DELIVERY_MODE_FLAG;
                 if (m_content_type.v_type == V_STRING && m_content_type.value.string) {
                     props.content_type = amqp_cstring_bytes(m_content_type.value.string);
+                    // props.content_type = amqp_bytes_malloc_dup(m_content_type.value.string);
                 } else {
                     props.content_type = amqp_cstring_bytes("text/plain");
                 }
+
+                if (m_reply_to.v_type == V_STRING && m_reply_to.value.string) {
+                    props.reply_to = amqp_cstring_bytes(m_reply_to.value.string);
+                    // props.reply_to = amqp_bytes_malloc_dup(m_reply_to.value.string);
+                    props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
+                }
+
                 props.delivery_mode = 2; /* persistent delivery mode */
                 if(set_ampq_error(amqp_basic_publish(conn, 1, amqp_cstring_bytes(m_exch.value.string),
                                                     amqp_cstring_bytes(routing_key), 0, 0,
@@ -338,6 +366,7 @@ public:
     }
 
     RSL_METHOD_DECL(OpenQueue) {
+        ValueClear (retVal);
         char * queue_name = rsGetStringParam(1, NULL); // нет значения по умолчанию
 
         flag_queue_opened = 0;
@@ -348,7 +377,7 @@ public:
                                amqp_cstring_bytes(queue_name),  // queue
                                amqp_cstring_bytes(consumer_tag), // consumer_tag (was amqp_empty_bytes)
                                0,                               // no_local
-                               0,                               // no_ack
+                               m_no_ack.value.boolval,          // no_ack
                                0,                               // exclusive
                                amqp_empty_table);               // arguments
 
@@ -363,6 +392,7 @@ public:
     }
 
     RSL_METHOD_DECL(ReadQueue) {
+        ValueClear (retVal);
 
         if (!flag_queue_opened) {
             _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "NUPOGODI ERROR. use OpenQueue before ReadQueue");
@@ -418,10 +448,21 @@ public:
         //       (char *)envelope.routing_key.bytes);
 
         if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
-            ValueSet(&m_content_type, V_STRING, envelope.message.properties.content_type.bytes);
+            nupogodiAmpqPropToRsVal(envelope.message.properties.content_type, &m_content_type);
+            //ValueClear(&m_content_type);
+            //ValueSet(&m_content_type, V_STRING, envelope.message.properties.content_type.bytes);
         } else {
             int v = 0;
             ValueSet(&m_content_type, V_UNDEF, &v);
+        }
+
+        if (envelope.message.properties._flags & AMQP_BASIC_REPLY_TO_FLAG) {
+            nupogodiAmpqPropToRsVal(envelope.message.properties.reply_to, &m_reply_to);
+            // ValueClear(&m_reply_to);
+            // ValueSet(&m_reply_to, V_STRING, envelope.message.properties.reply_to.bytes);
+        } else {
+            int v = 0;
+            ValueSet(&m_reply_to, V_UNDEF, &v);
         }
 
         //if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
@@ -459,7 +500,31 @@ public:
         return 0;
     }
 
+    RSL_METHOD_DECL(CancelQueue) {
+        ValueClear (retVal);
+        int rsl_result = 0;
+
+        if (!flag_queue_opened) {
+            _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "NUPOGODI ERROR. use OpenQueue before CancelQueue");
+            return 0;
+        }
+
+        amqp_basic_cancel_ok_t * result;
+        result = amqp_basic_cancel(conn, 1, amqp_cstring_bytes(consumer_tag));
+        if (result) {
+            flag_queue_opened = 0;
+            rsl_result = 1;
+        }
+
+        ReturnVal (V_BOOL, &rsl_result);
+
+        return 0;
+    }
+
+
+
     RSL_METHOD_DECL(Ack) {
+        ValueClear (retVal);
         int ret = 0;
         if (last_delivery_tag) {
             if (0 == amqp_basic_ack(conn, 1, last_delivery_tag, false)) {
@@ -472,6 +537,7 @@ public:
     }
 
     RSL_METHOD_DECL(ReadMessage) {
+        ValueClear (retVal);
         last_delivery_tag = 0;
         char * queue_name = rsGetStringParam(1,NULL); // нет значения по умолчанию
         if (socket_open()) {
@@ -496,16 +562,25 @@ public:
                 WideCharToMultiByte(866, 0, wbuff, char_count, message_buff, char_count, 0, 0);
                 message_buff[char_count]='\0';
                 free(wbuff);
-                ValueSet (retVal,V_STRING,(void *)message_buff);
+                ValueSet(retVal, V_STRING, (void *)message_buff);
             } else {
-                ValueSet (retVal,V_STRING,"");
+                ValueSet(retVal, V_STRING, "");
             }
 
             if (message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
-                ValueSet(&m_content_type, V_STRING, message.properties.content_type.bytes);
+                //  print("Content-type: %.*s\n", (int)message.properties.content_type.len, (char *)message.properties.content_type.bytes);
+                nupogodiAmpqPropToRsVal(message.properties.content_type, &m_content_type);
+
             } else {
                 int v = 0;
                 ValueSet(&m_content_type, V_UNDEF, &v);
+            }
+
+            if (message.properties._flags & AMQP_BASIC_REPLY_TO_FLAG) {
+                nupogodiAmpqPropToRsVal(message.properties.reply_to, &m_reply_to);
+            } else {
+                int v = 0;
+                ValueSet(&m_reply_to, V_UNDEF, &v);
             }
 
             amqp_destroy_message(&message);
@@ -547,11 +622,13 @@ private:
     VALUE m_pass;
     VALUE m_error;
     VALUE m_exch;
-    VALUE m_auto_ack; // 1 - сообщения подтверждаются при получении, 0 - после обработки надо вызывать Ack
+    VALUE m_auto_ack; // для чтения очереди 1 - сообщения подтверждаются при получении, 0 - после обработки надо вызывать Ack
+    VALUE m_no_ack;   // для открытия очереди 0 - def
     VALUE m_last_result;
     VALUE m_queue_timeout;  // после этого ожидания управление возвращается в RSL, даже если сообщение не получено
     VALUE m_library_error;
     VALUE m_content_type;
+    VALUE m_reply_to;
     char error_buffer[256];
     amqp_connection_state_t conn;
     amqp_socket_t * socket = NULL;
@@ -565,6 +642,7 @@ private:
 };
 
 TRslParmsInfo prmOneStr[] = { {V_STRING,0} };
+TRslParmsInfo prmNo[] = {{}};
 
 RSL_CLASS_BEGIN(TNuPogodi)
     RSL_PROP_EX    (host,    m_host,    -1, V_STRING,  0)
@@ -573,8 +651,10 @@ RSL_CLASS_BEGIN(TNuPogodi)
     RSL_PROP_EX    (pass,    m_pass,    -1, V_STRING,  0)
     RSL_PROP_EX    (exch,    m_exch,    -1, V_STRING,  0)
     RSL_PROP_EX    (AutoAck, m_auto_ack,-1, V_INTEGER, 0)
+    RSL_PROP_EX    (NoAck,   m_no_ack,  -1, V_BOOL,    0)
     RSL_PROP_EX    (QueueTimeout, m_queue_timeout, -1, V_INTEGER, 0)
     RSL_PROP_EX    (ContentType,  m_content_type,  -1, V_STRING,  0)
+    RSL_PROP_EX    (ReplyTo,      m_reply_to,      -1, V_STRING,  0)
 
     RSL_PROP_EX    (error,          m_error,         -1, V_STRING,  VAL_FLAG_RDONLY)
     RSL_PROP_EX    (LastResultCode, m_last_result,   -1, V_INTEGER, VAL_FLAG_RDONLY)
@@ -586,6 +666,7 @@ RSL_CLASS_BEGIN(TNuPogodi)
     RSL_METH_EX    (OpenQueue,   -1, V_BOOL,  0, RSLNP(prmOneStr), prmOneStr)
     RSL_METH_EX    (ReadQueue,   -1, V_UNDEF, 0, RSLNP(prmOneStr), prmOneStr)
     RSL_METH_EX    (ReadMessage, -1, V_UNDEF, 0, RSLNP(prmOneStr), prmOneStr)
+    RSL_METH_EX    (CancelQueue, -1, V_BOOL, 0, RSLNP(prmOneStr), prmNo)
 
     RSL_PROP_METH  (RouteKey)
 

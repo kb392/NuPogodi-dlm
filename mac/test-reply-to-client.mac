@@ -1,0 +1,100 @@
+/*
+    Тестовый клиент для взаимодействия с тестовым сервером test-rpc-server.mac
+*/
+import nupogodi;
+import doctor; 
+import "ampq_const.mac";
+
+/*
+Consume from the pseudo-queue amq.rabbitmq.reply-to in no-ack mode. 
+There is no need to declare this "queue" first, 
+although the client can do so if it wants.
+*/
+
+private var queue_name = "amq.rabbitmq.reply-to";
+private var message_text;
+private var rpc_result;
+private var i = 0;
+
+private macro rmqTestRpcClient(txtMsgBody:String, txtError:@String)
+    var o = TNuPogodi();
+    o.AutoAck = 0; // если установлено AutoAck = 0, то сообщение надо подтвердить после обработки, вызвав метод Ack()
+    o.NoAck = true; // если установлено AutoAck = 0, то сообщение надо подтвердить после обработки, вызвав метод Ack()
+    o.QueueTimeout = 300; // таймаут обработки
+    o.host="127.0.0.1";
+    o.exch="ex_rpc";
+    o.ReplyTo=queue_name;
+
+    var ret;
+    var t1, t2;
+
+    txtError = "";
+
+    PrintLN("RPC CLIENT " + o.user + ":" + o.pass + "@" + o.host + ":" + o.port + " " + o.AutoAck + " " + o.QueueTimeout);
+
+    if (o.OpenQueue(queue_name))  // подписываемся на получение сообщений из очереди
+        PrintLN("Подписка на очередь выполнена успешно");
+
+        ret = o.SendText(txtMsgBody);
+        if (ret)
+            PrintLN("OK отправка сообщения " + String(ret));
+
+            t1 = dcGetCurrentTime();
+            ret = o.ReadQueue();
+            t2 = dcGetCurrentTime();
+
+            if (ValType(ret) == V_STRING)
+
+                // сообщение получено
+                PrintLN("Получен ответ. Время обработки ", String(t2-t1), " ms");
+
+            elif ((o.LastResultCode == AMQP_RESPONSE_LIBRARY_EXCEPTION) and (o.LibraryError == AMQP_STATUS_TIMEOUT))
+                // за QueueTimeout не бьыло получено сообщения
+                PrintLN("Ответ на сообщение не получен за " + o.QueueTimeout + " секунд");
+                txtError = "TIMEOUT";
+                ret = false;
+            else
+                // произошла ошибка
+                PrintLN("При ожидании ответа произошла ошибка. Код ошибки: " + o.LastResultCode + ". Описание ошибки: " + o.error);
+                txtError = "ERROR " + " " + o.LastResultCode + " " + o.error;
+                ret = false;
+            end;
+
+        else
+            PrintLN("ERR отправка сообщения " + o.error);
+            ret = false;
+        end;
+
+        if (o.CancelQueue()) // дизлайк, отписка
+            PrintLN("Отписка от очереди");
+        else
+            PrintLN("Ошибка отписки от очереди");
+        end;
+        return ret;
+
+    else
+        PrintLN("Ошибка подписки на очередь " + queue_name);
+        PrintLN(o.LastResultCode + " " + o.error);
+        PrintLN("AutoAck="+o.AutoAck);
+        txtError = "CONSUME ERROR";
+        return false;
+    end;
+end;
+
+while (true)
+    message_text = "Тестовое сообщение № " + String(i+1);
+    if (GetString(message_text, "Текст сообщения"))
+        rpc_result = rmqTestRpcClient(message_text);
+        if (ValType(rpc_result) == V_STRING)
+            MsgBox("На сообщение|" + message_text + "|Получен ответ|" + rpc_result);
+        else
+            PrintLn("Ошибка");
+            break;
+        end; 
+    else
+        break;
+    end;
+    
+    i = i + 1;
+
+end;

@@ -15,6 +15,13 @@ if (ret)
     PrintLN("OK " + ret);
     if (o.ContentType != null)
         PrintLN("Content-type " + o.ContentType);
+    else
+        PrintLN("NO Content-type");
+    end;
+    if (o.ReplyTo != null)
+        PrintLN("Reply-to " + o.ReplyTo);
+    else
+        PrintLN("NO Reply-to");
     end;
 else
     PrintLN("ERR "+ o.error);

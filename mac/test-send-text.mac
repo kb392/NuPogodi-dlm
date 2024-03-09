@@ -1,6 +1,7 @@
 import nupogodi;
 var i;
-var N = 1000000;
+//var N = 1000000;
+var N = 1;
 var ret;
 var o=TNuPogodi();
 
