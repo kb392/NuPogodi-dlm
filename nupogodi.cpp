@@ -242,8 +242,11 @@ public:
       ValueMake(&m_content_type);
       m_content_type.v_type = V_UNDEF;
 
+      ValueMake(&m_type);
+      m_type.v_type = V_UNDEF;
+
       ValueMake(&m_reply_to);
-      m_content_type.v_type = V_UNDEF;
+      m_reply_to.v_type = V_UNDEF;
       
       //ValueMake (&m_error);
       //m_error.v_type=V_UNDEF;
@@ -343,6 +346,15 @@ public:
                 } else {
                     props.content_type = amqp_cstring_bytes("text/plain");
                 }
+
+                if (m_type.v_type == V_STRING && m_type.value.string) {
+                    props.type = amqp_cstring_bytes(m_type.value.string);
+                    // props.content_type = amqp_bytes_malloc_dup(m_type.value.string);
+                } else {
+                    props.type.bytes = NULL;
+                    props.type.len = 0;
+                }
+
 
                 if (m_reply_to.v_type == V_STRING && m_reply_to.value.string) {
                     props.reply_to = amqp_cstring_bytes(m_reply_to.value.string);
@@ -628,6 +640,7 @@ private:
     VALUE m_queue_timeout;  // после этого ожидания управление возвращается в RSL, даже если сообщение не получено
     VALUE m_library_error;
     VALUE m_content_type;
+    VALUE m_type;
     VALUE m_reply_to;
     char error_buffer[256];
     amqp_connection_state_t conn;
@@ -654,6 +667,7 @@ RSL_CLASS_BEGIN(TNuPogodi)
     RSL_PROP_EX    (NoAck,   m_no_ack,  -1, V_BOOL,    0)
     RSL_PROP_EX    (QueueTimeout, m_queue_timeout, -1, V_INTEGER, 0)
     RSL_PROP_EX    (ContentType,  m_content_type,  -1, V_STRING,  0)
+    RSL_PROP_EX    (Type,         m_type,          -1, V_STRING,  0)
     RSL_PROP_EX    (ReplyTo,      m_reply_to,      -1, V_STRING,  0)
 
     RSL_PROP_EX    (error,          m_error,         -1, V_STRING,  VAL_FLAG_RDONLY)
