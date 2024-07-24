@@ -23,6 +23,13 @@ if (ret)
     else
         PrintLN("NO Reply-to");
     end;
+
+    if (o.Type != null)
+        PrintLN("Type " + o.Type);
+    else
+        PrintLN("NO Type");
+    end;
+
 else
     PrintLN("ERR "+ o.error);
 end;

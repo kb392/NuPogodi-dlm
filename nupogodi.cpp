@@ -349,6 +349,7 @@ public:
 
                 if (m_type.v_type == V_STRING && m_type.value.string) {
                     props.type = amqp_cstring_bytes(m_type.value.string);
+                    props._flags |= AMQP_BASIC_TYPE_FLAG;
                     // props.content_type = amqp_bytes_malloc_dup(m_type.value.string);
                 } else {
                     props.type.bytes = NULL;
@@ -593,6 +594,14 @@ public:
             } else {
                 int v = 0;
                 ValueSet(&m_reply_to, V_UNDEF, &v);
+            }
+
+
+            if (message.properties._flags & AMQP_BASIC_TYPE_FLAG) {
+                nupogodiAmpqPropToRsVal(message.properties.type, &m_type);
+            } else {
+                int v = 0;
+                ValueSet(&m_type, V_UNDEF, &v);
             }
 
             amqp_destroy_message(&message);

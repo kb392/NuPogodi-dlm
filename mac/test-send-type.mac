@@ -1,0 +1,22 @@
+import nupogodi;
+var i;
+var ret;
+var o=TNuPogodi();
+
+PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
+
+o.host="127.0.0.1";
+//o.exch="amq.direct"; // в обменник по-умолчанию
+o.exch="ex1"; 
+o.type = "my.msg.type";
+
+PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
+
+ret=o.SendText("Привет, мир "+String(i:o:4));
+if (ret)
+    PrintLN(ret);
+else
+    PrintLN(o.error);
+
+end;
+                         

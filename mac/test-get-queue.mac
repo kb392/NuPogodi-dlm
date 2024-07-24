@@ -30,6 +30,9 @@ if (o.OpenQueue("tu1"))  // подписываемся на получение �
             if (o.ContentType != null)
                 PrintLN("Content-type " + o.ContentType);
             end;
+            if (o.Type != null)
+                PrintLN("Type " + o.Type);
+            end;
             PrintLN("Key ",  o.RouteKey);
             if (not o.AutoAck) 
                 // подтверждаем, если установлен соответствующий режим
