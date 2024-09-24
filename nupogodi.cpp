@@ -5,6 +5,7 @@
 #include <map>
 #include <amqp_tcp_socket.h>
 
+
 char * rsGetStringParam(int iParam, char * defStr) {
     VALUE *vString;
     if (!GetParm (iParam,&vString) || vString->v_type != V_STRING) {
@@ -25,6 +26,31 @@ char * rsGetFilePathParam(int iParam) {
     sPath[strlen(vFilePath->value.string)]='\0';
     return sPath;
 }
+
+
+/*
+char * UTF8To866(const char * s) {
+    BSTR    bstrWide;
+    char *  sRet;
+    int     nLength;
+
+    nLength = MultiByteToWideChar(CP_UTF8, 0, s, strlen(s) + 1, NULL, NULL);
+    bstrWide = SysAllocStringLen(NULL, nLength);
+
+    MultiByteToWideChar(CP_UTF8, 0, s, strlen(s) + 1, bstrWide, nLength);
+
+    nLength = WideCharToMultiByte(CP_ACP, 0, bstrWide, -1, NULL, 0, NULL, NULL);
+    sRet    = (char *)malloc(nLength+1);
+    sRet[nLength]='\0';
+
+    WideCharToMultiByte(CP_ACP, 0, bstrWide, -1, sRet, nLength, NULL, NULL);
+    SysFreeString(bstrWide);
+
+    CharToOemBuff(sRet, sRet, nLength);
+
+    return sRet;
+}
+*/
 
 char * nupogodiGetFileContent(const char * sFilePath) {
     FILE *f = fopen(sFilePath, "rb");
@@ -58,6 +84,18 @@ void nupogodiAmpqPropToRsVal(amqp_bytes_t rmqprop, VALUE * prsval) {
 
     iDoneMem(p);
 }
+
+std::string nupogodiAmpqPropToString(amqp_bytes_t rmqprop) {
+    char * p = (char *)iNewMem(rmqprop.len + 1);
+    if (!p) 
+        RslError("memory error");
+
+    memcpy(p, rmqprop.bytes, rmqprop.len);
+    p[rmqprop.len] = '\0';
+
+    return std::string(p);
+}
+
 
 class  TNuPogodi {
 
@@ -151,6 +189,36 @@ class  TNuPogodi {
         }
     }
 
+    /*
+    {
+        try {
+            map.at(13);
+        }
+    catch(const std::out_of_range& ex)
+    {
+        std::cout << "1) out_of_range::what(): " << ex.what() << '\n';
+    }
+    }
+    */
+
+    // сохраняет во внутреннем хранилище пользовательские заголовки но только с форматом строка
+    void read_headers(amqp_table_t h) {
+        str_headers.clear();
+
+        for (int i = 0; i < h.num_entries; i++) {
+            std::string header_key   = nupogodiAmpqPropToString(h.entries[i].key);
+            if (h.entries[i].value.kind == AMQP_FIELD_KIND_BYTES || h.entries[i].value.kind == AMQP_FIELD_KIND_UTF8) {
+                std::string header_value = nupogodiAmpqPropToString(h.entries[i].value.value.bytes);
+                str_headers[header_key] = header_value;
+            } else {
+                // print("header %s has wrong type %c\n", header_key.c_str(), h.entries[i].value.kind);
+            }
+        }
+    }
+    
+
+
+
 public:
     __int64 to_deftype(VALUE *v){
         switch (v->v_type) {
@@ -201,7 +269,6 @@ public:
 
 
    TNuPogodi (TGenObject *pThis = NULL) {
-      //print ("-> Constructor CPP\n");
 
       ValueMake (&m_host);
       ValueSet (&m_host,V_STRING,"localhost");
@@ -260,7 +327,6 @@ public:
       }
 
    ~TNuPogodi () {
-      //print ("-> Destructor CPP\n");
       ValueClear (&m_host);
       ValueClear (&m_port);
       ValueClear (&m_user);
@@ -302,7 +368,22 @@ public:
 
                 amqp_basic_properties_t props;
                 props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG | AMQP_BASIC_DELIVERY_MODE_FLAG;
-                props.content_type = amqp_cstring_bytes("text/plain");
+                if (m_content_type.v_type == V_STRING && m_content_type.value.string) {
+                    props.content_type = amqp_cstring_bytes(m_content_type.value.string);
+                    // props.content_type = amqp_bytes_malloc_dup(m_content_type.value.string);
+                } else {
+                    props.content_type = amqp_cstring_bytes("text/plain");
+                }
+
+                if (m_type.v_type == V_STRING && m_type.value.string) {
+                    props.type = amqp_cstring_bytes(m_type.value.string);
+                    props._flags |= AMQP_BASIC_TYPE_FLAG;
+                    // props.content_type = amqp_bytes_malloc_dup(m_type.value.string);
+                } else {
+                    props.type.bytes = NULL;
+                    props.type.len = 0;
+                }
+
                 props.delivery_mode = 2; /* persistent delivery mode */
                 if(set_ampq_error(amqp_basic_publish(conn, 1, amqp_cstring_bytes(m_exch.value.string),
                                                     amqp_cstring_bytes(routing_key), 0, 0,
@@ -356,11 +437,20 @@ public:
                     props.type.len = 0;
                 }
 
+                // отправка пользовательких заголовков
+                if (str_headers.size() > 0) {
+                    props._flags |= AMQP_BASIC_HEADERS_FLAG;
+                    props.headers.num_entries = str_headers.size();
+                    props.headers.entries     = (amqp_table_entry_t_ *)calloc(props.headers.num_entries, sizeof(amqp_table_entry_t));
+                    int i = 0;  
+                    for (auto it = str_headers.cbegin(); it != str_headers.cend(); ++it) {
+                        // (*it).first << ':' << (*it).second << ']';
+                        props.headers.entries[i].key = amqp_cstring_bytes((*it).first.c_str());
+                        props.headers.entries[i].value.kind  = AMQP_FIELD_KIND_UTF8;
+                        props.headers.entries[i].value.value.bytes = amqp_cstring_bytes((*it).second.c_str());
 
-                if (m_reply_to.v_type == V_STRING && m_reply_to.value.string) {
-                    props.reply_to = amqp_cstring_bytes(m_reply_to.value.string);
-                    // props.reply_to = amqp_bytes_malloc_dup(m_reply_to.value.string);
-                    props._flags |= AMQP_BASIC_REPLY_TO_FLAG;
+                        i++;
+                    }
                 }
 
                 props.delivery_mode = 2; /* persistent delivery mode */
@@ -451,7 +541,6 @@ public:
         last_delivery_tag = envelope.delivery_tag;
         strncpy(last_routing_key, (char *)envelope.routing_key.bytes, min(envelope.routing_key.len, sizeof(last_routing_key)-1));
         last_routing_key[min(envelope.routing_key.len, sizeof(last_routing_key)-1)] = '\0';
-        print("key [%s]\n", last_routing_key);
         strncpy(last_exchange,    (char *)envelope.exchange.bytes,    min(envelope.exchange.len,    sizeof(last_exchange)-1));
         last_exchange[min(envelope.exchange.len, sizeof(last_exchange)-1)] = '\0';
 
@@ -477,6 +566,8 @@ public:
             int v = 0;
             ValueSet(&m_reply_to, V_UNDEF, &v);
         }
+
+        read_headers(envelope.message.properties.headers);
 
         //if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
         //  print("Content-type: %.*s\n",
@@ -604,6 +695,8 @@ public:
                 ValueSet(&m_type, V_UNDEF, &v);
             }
 
+            read_headers(message.properties.headers);
+
             amqp_destroy_message(&message);
             return 0;
         }
@@ -611,6 +704,45 @@ public:
         ValueSet (retVal,V_BOOL,(void *)&ret);
         return 0;
     }
+
+    RSL_METHOD_DECL(GetHeader) {
+        ValueClear (retVal);
+
+        char * header_name = rsGetFilePathParam(1);
+
+        try {
+            std::string ret_string = str_headers.at(std::string(header_name));
+            ValueSet (retVal, V_STRING, (void *)ret_string.c_str());
+        }
+        catch(const std::out_of_range& ex) {
+            // ничего не делаем, возвращаем null
+        }
+
+        return 0;
+    }
+
+    RSL_METHOD_DECL(ClearHeaders) {
+        ValueClear (retVal);
+        str_headers.clear();
+        return 0;
+    }
+
+    RSL_METHOD_DECL(AddHeader) {
+        ValueClear (retVal);
+        char * szKey = rsGetStringParam(1, NULL);
+        char * szVal = rsGetStringParam(2, NULL);
+        str_headers[std::string(szKey)] = std::string(szVal);
+        return 0;
+    }
+
+    RSL_METHOD_DECL(GetHeadersCount) {
+        ValueClear (retVal);
+        retVal->v_type = V_INTEGER;
+        retVal->value.intval = str_headers.size();
+
+        return 0;
+    }
+
 
 
     RSL_GETPROP_DECL(RouteKey)  { 
@@ -660,10 +792,12 @@ private:
     char last_exchange[256];  // 
     char consumer_tag[32];
     int flag_queue_opened = 0;
+    std::map<std::string, std::string> str_headers; 
 
 };
 
 TRslParmsInfo prmOneStr[] = { {V_STRING,0} };
+TRslParmsInfo prmTwoStr[] = { {V_STRING,0},{V_STRING,0} };
 TRslParmsInfo prmNo[] = {{}};
 
 RSL_CLASS_BEGIN(TNuPogodi)
@@ -689,7 +823,11 @@ RSL_CLASS_BEGIN(TNuPogodi)
     RSL_METH_EX    (OpenQueue,   -1, V_BOOL,  0, RSLNP(prmOneStr), prmOneStr)
     RSL_METH_EX    (ReadQueue,   -1, V_UNDEF, 0, RSLNP(prmOneStr), prmOneStr)
     RSL_METH_EX    (ReadMessage, -1, V_UNDEF, 0, RSLNP(prmOneStr), prmOneStr)
-    RSL_METH_EX    (CancelQueue, -1, V_BOOL, 0, RSLNP(prmOneStr), prmNo)
+    RSL_METH_EX    (CancelQueue, -1, V_BOOL,  0, RSLNP(prmNo),     prmNo)
+    RSL_METH_EX    (GetHeader,   -1, V_UNDEF, 0, RSLNP(prmOneStr), prmOneStr)
+    RSL_METH_EX    (ClearHeaders,-1, V_UNDEF, 0, RSLNP(prmNo),     prmNo)
+    RSL_METH_EX    (AddHeader,   -1, V_UNDEF, 0, RSLNP(prmTwoStr), prmTwoStr)
+    RSL_METH_EX    (GetHeadersCount, -1, V_INTEGER, 0, RSLNP(prmNo), prmNo)
 
     RSL_PROP_METH  (RouteKey)
 

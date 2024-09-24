@@ -2,6 +2,7 @@ import nupogodi;
 var i;
 var ret;
 var o=TNuPogodi();
+var v;
 
 PrintLN(o.user+":"+o.pass+"@"+o.host+":"+o.port);
 
@@ -28,6 +29,13 @@ if (ret)
         PrintLN("Type " + o.Type);
     else
         PrintLN("NO Type");
+    end;
+
+    v = o.GetHeader("hkey");
+    if (v != null)
+        PrintLN("hkey " + v);
+    else
+        PrintLN("NO hkey");
     end;
 
 else
