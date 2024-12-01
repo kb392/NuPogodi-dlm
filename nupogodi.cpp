@@ -114,6 +114,7 @@ class  TNuPogodi {
 
             case AMQP_RESPONSE_SERVER_EXCEPTION:
                 switch (x.reply.id) {
+
                     case AMQP_CONNECTION_CLOSE_METHOD: {
                         amqp_connection_close_t *m = (amqp_connection_close_t *)x.reply.decoded;
 
@@ -121,15 +122,18 @@ class  TNuPogodi {
                                     context, m->reply_code, (int)m->reply_text.len, (char *)m->reply_text.bytes);
                         break;
                         }
+
                     case AMQP_CHANNEL_CLOSE_METHOD: {
                         amqp_channel_close_t *m = (amqp_channel_close_t *)x.reply.decoded;
                         _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: server channel error %uh, message: %.*s\n",
                                  context, m->reply_code, (int)m->reply_text.len, (char *)m->reply_text.bytes);
                         break;
                         }
+
                     default:
                         _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: server error, method id 0x%08X\n", context, x.reply.id);
                         break;
+
                 }
                 break;
         }
@@ -138,11 +142,9 @@ class  TNuPogodi {
 
     bool set_ampq_error(int x, char const *context) {
         if (x < 0) 
-            _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: %s", context, amqp_error_string2(x));
+            _snprintf_s(error_buffer, sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: %s", context, amqp_error_string2(x));
         return (x==0);
     }
-
-
 
     bool check_socket() {
         if (!socket) 
@@ -161,7 +163,7 @@ class  TNuPogodi {
                        "/",                           // vhost the virtual host to connect to on the broker. The default on most brokers is "/"
                        0,                             // channel_max the limit for the number of channels for the connection 0 means no limit, and is a good default
                        131072,                        // frame_max the maximum size of an AMQP frame ont he wire to request of the broker for this connection. 4096 is the minimum size, 2^31-1 is the maximum, a good default is 131072 (128KB), or AMQP_DEFAULT_FRAME_SIZE
-                       0,                             // heartbeat the number of seconds between heartbeat frame to request of the broker. A value of 0 disables heartbeats.
+                       m_heartbeat.value.intval,      // heartbeat the number of seconds between heartbeat frame to request of the broker. A value of 0 disables heartbeats.
                        AMQP_SASL_METHOD_PLAIN,        // properties a table of properties to send the broker.
                        m_user.value.string, 
                        m_pass.value.string);
@@ -283,6 +285,10 @@ public:
       ValueMake (&m_pass);
       ValueSet (&m_pass,V_STRING,"guest");
 
+      ValueMake (&m_heartbeat);
+      m_heartbeat.v_type=V_INTEGER;
+      m_heartbeat.value.intval = 0;
+      
       ValueMake (&m_exch);
       ValueSet (&m_exch,V_STRING,"");
 
@@ -331,6 +337,7 @@ public:
       ValueClear (&m_port);
       ValueClear (&m_user);
       ValueClear (&m_pass);
+      ValueClear (&m_heartbeat);
       ValueClear (&m_exch);
       ValueClear (&m_error);
       ValueClear (&m_auto_ack);
@@ -773,6 +780,7 @@ private:
     VALUE m_port;
     VALUE m_user;
     VALUE m_pass;
+    VALUE m_heartbeat;
     VALUE m_error;
     VALUE m_exch;
     VALUE m_auto_ack; // для чтения очереди 1 - сообщения подтверждаются при получении, 0 - после обработки надо вызывать Ack
@@ -801,17 +809,18 @@ TRslParmsInfo prmTwoStr[] = { {V_STRING,0},{V_STRING,0} };
 TRslParmsInfo prmNo[] = {{}};
 
 RSL_CLASS_BEGIN(TNuPogodi)
-    RSL_PROP_EX    (host,    m_host,    -1, V_STRING,  0)
-    RSL_PROP_EX    (port,    m_port,    -1, V_INTEGER, 0)
-    RSL_PROP_EX    (user,    m_user,    -1, V_STRING,  0)
-    RSL_PROP_EX    (pass,    m_pass,    -1, V_STRING,  0)
-    RSL_PROP_EX    (exch,    m_exch,    -1, V_STRING,  0)
-    RSL_PROP_EX    (AutoAck, m_auto_ack,-1, V_INTEGER, 0)
-    RSL_PROP_EX    (NoAck,   m_no_ack,  -1, V_BOOL,    0)
-    RSL_PROP_EX    (QueueTimeout, m_queue_timeout, -1, V_INTEGER, 0)
-    RSL_PROP_EX    (ContentType,  m_content_type,  -1, V_STRING,  0)
-    RSL_PROP_EX    (Type,         m_type,          -1, V_STRING,  0)
-    RSL_PROP_EX    (ReplyTo,      m_reply_to,      -1, V_STRING,  0)
+    RSL_PROP_EX    (host,           m_host,          -1, V_STRING,  0)
+    RSL_PROP_EX    (port,           m_port,          -1, V_INTEGER, 0)
+    RSL_PROP_EX    (user,           m_user,          -1, V_STRING,  0)
+    RSL_PROP_EX    (pass,           m_pass,          -1, V_STRING,  0)
+    RSL_PROP_EX    (heartbeat,      m_heartbeat,     -1, V_INTEGER, 0)
+    RSL_PROP_EX    (exch,           m_exch,          -1, V_STRING,  0)
+    RSL_PROP_EX    (AutoAck,        m_auto_ack,      -1, V_INTEGER, 0)
+    RSL_PROP_EX    (NoAck,          m_no_ack,        -1, V_BOOL,    0)
+    RSL_PROP_EX    (QueueTimeout,   m_queue_timeout, -1, V_INTEGER, 0)
+    RSL_PROP_EX    (ContentType,    m_content_type,  -1, V_STRING,  0)
+    RSL_PROP_EX    (Type,           m_type,          -1, V_STRING,  0)
+    RSL_PROP_EX    (ReplyTo,        m_reply_to,      -1, V_STRING,  0)
 
     RSL_PROP_EX    (error,          m_error,         -1, V_STRING,  VAL_FLAG_RDONLY)
     RSL_PROP_EX    (LastResultCode, m_last_result,   -1, V_INTEGER, VAL_FLAG_RDONLY)
