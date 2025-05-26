@@ -105,11 +105,11 @@ class  TNuPogodi {
                 return 1;
 
             case AMQP_RESPONSE_NONE:
-                _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s missing RPC reply type", context);
+                _snprintf_s(error_buffer, sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s missing RPC reply type", context);
                 break;
 
             case AMQP_RESPONSE_LIBRARY_EXCEPTION:
-                _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: %s", context, amqp_error_string2(x.library_error));
+                _snprintf_s(error_buffer, sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: %s", context, amqp_error_string2(x.library_error));
                 break;
 
             case AMQP_RESPONSE_SERVER_EXCEPTION:
@@ -118,20 +118,20 @@ class  TNuPogodi {
                     case AMQP_CONNECTION_CLOSE_METHOD: {
                         amqp_connection_close_t *m = (amqp_connection_close_t *)x.reply.decoded;
 
-                        _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: server connection error %uh, message: %.*s\n", 
+                        _snprintf_s(error_buffer, sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: server connection error %uh, message: %.*s\n", 
                                     context, m->reply_code, (int)m->reply_text.len, (char *)m->reply_text.bytes);
                         break;
                         }
 
                     case AMQP_CHANNEL_CLOSE_METHOD: {
                         amqp_channel_close_t *m = (amqp_channel_close_t *)x.reply.decoded;
-                        _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: server channel error %uh, message: %.*s\n",
+                        _snprintf_s(error_buffer, sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: server channel error %uh, message: %.*s\n",
                                  context, m->reply_code, (int)m->reply_text.len, (char *)m->reply_text.bytes);
                         break;
                         }
 
                     default:
-                        _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: server error, method id 0x%08X\n", context, x.reply.id);
+                        _snprintf_s(error_buffer, sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: server error, method id 0x%08X\n", context, x.reply.id);
                         break;
 
                 }
@@ -185,9 +185,11 @@ class  TNuPogodi {
 
     void close_socket() {
         if (flag_init) {
-            if(!set_socket_error(amqp_channel_close(conn, 1, AMQP_REPLY_SUCCESS),"Closing channel"   )) return;
-            if(!set_socket_error(amqp_connection_close(conn, AMQP_REPLY_SUCCESS),"Closing connection")) return;
-            set_ampq_error(amqp_destroy_connection(conn), "Ending connection");
+            //if(!set_socket_error(amqp_channel_close(conn, 1, AMQP_REPLY_SUCCESS),"Closing channel"   )) return;
+            //if(!set_socket_error(amqp_connection_close(conn, AMQP_REPLY_SUCCESS),"Closing connection")) return;
+            amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
+            //set_ampq_error(amqp_destroy_connection(conn), "Ending connection");
+            amqp_destroy_connection(conn);
         }
     }
 
@@ -301,7 +303,7 @@ public:
       m_no_ack.value.boolval = 0;
 
       ValueMake (&m_last_result);
-      m_last_result.v_type=V_INTEGER;
+      m_last_result.v_type = V_INTEGER;
       m_last_result.value.intval = 0;
 
       ValueMake (&m_library_error);
@@ -324,15 +326,19 @@ public:
       //ValueMake (&m_error);
       //m_error.v_type=V_UNDEF;
 
-      m_error.v_type=V_STRING;
-      m_error.value.string=error_buffer;
-      *error_buffer='\0';
+      m_error.v_type = V_STRING;
+      m_error.value.string = error_buffer;
+
+      //*error_buffer='\0';
+      memset(error_buffer, 0, sizeof(error_buffer));
 
       sprintf(consumer_tag, "rsl%08i", UserNumber());      
 
       }
 
    ~TNuPogodi () {
+      close_socket();
+
       ValueClear (&m_host);
       ValueClear (&m_port);
       ValueClear (&m_user);
@@ -344,8 +350,6 @@ public:
       ValueClear (&m_no_ack);
       ValueClear (&m_last_result);
       ValueClear (&m_library_error);
-
-      close_socket();
       }
 
 
@@ -356,7 +360,7 @@ public:
         VALUE *v;
         GetParm (*firstParmOffs,&v);
       
-        conn=amqp_new_connection();
+        conn = amqp_new_connection();
         //amqp_socket_t *socket = amqp_tcp_socket_new(conn);
         check_socket();
     }
@@ -366,6 +370,9 @@ public:
         ValueClear (retVal);
         retVal->v_type = V_BOOL;
         retVal->value.boolval=0;
+
+        m_last_result.value.intval = 0;
+        m_library_error.value.intval = 0;
 
         if (socket_open()) {
             char * messagefilename = rsGetFilePathParam(1);
@@ -411,6 +418,10 @@ public:
         ValueClear (retVal);
         retVal->v_type = V_BOOL;
         retVal->value.boolval=0;
+
+        m_last_result.value.intval = 0;
+        m_library_error.value.intval = 0;
+
 
         if (socket_open()) {
             char * message_in = rsGetStringParam(1,"");                     // текст из RS в кодировке 866
@@ -478,6 +489,9 @@ public:
     RSL_METHOD_DECL(OpenQueue) {
         ValueClear (retVal);
         char * queue_name = rsGetStringParam(1, NULL); // нет значения по умолчанию
+
+        m_last_result.value.intval = 0;
+        m_library_error.value.intval = 0;
 
         flag_queue_opened = 0;
         if (socket_open()) {
@@ -614,6 +628,8 @@ public:
     RSL_METHOD_DECL(CancelQueue) {
         ValueClear (retVal);
         int rsl_result = 0;
+        m_last_result.value.intval = 0;
+        m_library_error.value.intval = 0;
 
         if (!flag_queue_opened) {
             _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "NUPOGODI ERROR. use OpenQueue before CancelQueue");
@@ -637,6 +653,9 @@ public:
     RSL_METHOD_DECL(Ack) {
         ValueClear (retVal);
         int ret = 0;
+        m_last_result.value.intval = 0;
+        m_library_error.value.intval = 0;
+
         if (last_delivery_tag) {
             if (0 == amqp_basic_ack(conn, 1, last_delivery_tag, false)) {
                 last_delivery_tag = 0;
@@ -649,7 +668,11 @@ public:
 
     RSL_METHOD_DECL(ReadMessage) {
         ValueClear (retVal);
+
+        m_last_result.value.intval = 0;
+        m_library_error.value.intval = 0;
         last_delivery_tag = 0;
+
         char * queue_name = rsGetStringParam(1,NULL); // нет значения по умолчанию
         if (socket_open()) {
 
@@ -714,6 +737,9 @@ public:
 
     RSL_METHOD_DECL(GetHeader) {
         ValueClear (retVal);
+
+        m_last_result.value.intval = 0;
+        m_library_error.value.intval = 0;
 
         char * header_name = rsGetFilePathParam(1);
 
