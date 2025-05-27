@@ -143,20 +143,28 @@ class  TNuPogodi {
     bool set_ampq_error(int x, char const *context) {
         if (x < 0) 
             _snprintf_s(error_buffer, sizeof(error_buffer), _TRUNCATE, "AMPQ ERROR. %s: %s", context, amqp_error_string2(x));
+        else
+            error_buffer[0] = '\0';
         return (x==0);
     }
 
     bool check_socket() {
-        if (!socket) 
+        if (!socket) { 
+            if (m_verbose.value.boolval) print("amqp_tcp_socket_new ");
             socket = amqp_tcp_socket_new(conn);
-        return (socket!=NULL);
+            if (m_verbose.value.boolval) print(socket == NULL?"ERR\n":"OK\n");
+        }
+        return (socket != NULL);
     }
 
     bool socket_open() {
-        if (flag_init) 
+        if (flag_init) {
+            if (m_verbose.value.boolval) print("socket already opened\n");
             return 1;
+        }
         check_socket();
         int status = amqp_socket_open(socket, m_host.value.string, m_port.value.intval);
+        if (m_verbose.value.boolval) print("amqp_socket_open(%s,%i) = %i\n",m_host.value.string, m_port.value.intval,status);
         if (status==AMQP_STATUS_OK){
             amqp_rpc_reply_t r=
             amqp_login(conn,                          // state the connection object
@@ -190,6 +198,7 @@ class  TNuPogodi {
             amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
             //set_ampq_error(amqp_destroy_connection(conn), "Ending connection");
             amqp_destroy_connection(conn);
+            flag_init = 0;
         }
     }
 
@@ -323,6 +332,14 @@ public:
       ValueMake(&m_reply_to);
       m_reply_to.v_type = V_UNDEF;
       
+      ValueMake(&m_mandatory);
+      m_mandatory.v_type=V_BOOL;
+      m_mandatory.value.boolval = 0;
+
+      ValueMake(&m_verbose);
+      m_verbose.v_type=V_BOOL;
+      m_verbose.value.boolval = 0;
+
       //ValueMake (&m_error);
       //m_error.v_type=V_UNDEF;
 
@@ -334,9 +351,10 @@ public:
 
       sprintf(consumer_tag, "rsl%08i", UserNumber());      
 
-      }
+   } // constructor
 
    ~TNuPogodi () {
+      if (m_verbose.value.boolval) print("start descructor\n");
       close_socket();
 
       ValueClear (&m_host);
@@ -350,7 +368,11 @@ public:
       ValueClear (&m_no_ack);
       ValueClear (&m_last_result);
       ValueClear (&m_library_error);
-      }
+      ValueClear (&m_mandatory);
+
+      if (m_verbose.value.boolval) print("finish descructor\n");
+      ValueClear (&m_verbose);
+    } // destructor
 
 
     RSL_CLASS(TNuPogodi)
@@ -399,7 +421,7 @@ public:
                 }
 
                 props.delivery_mode = 2; /* persistent delivery mode */
-                if(set_ampq_error(amqp_basic_publish(conn, 1, amqp_cstring_bytes(m_exch.value.string),
+                if (set_ampq_error(amqp_basic_publish(conn, 1, amqp_cstring_bytes(m_exch.value.string),
                                                     amqp_cstring_bytes(routing_key), 0, 0,
                                                     &props, amqp_cstring_bytes(messagebody)),
                                  "Send")) {
@@ -417,11 +439,10 @@ public:
     RSL_METHOD_DECL(SendText) {
         ValueClear (retVal);
         retVal->v_type = V_BOOL;
-        retVal->value.boolval=0;
+        retVal->value.boolval = 0;
 
         m_last_result.value.intval = 0;
         m_library_error.value.intval = 0;
-
 
         if (socket_open()) {
             char * message_in = rsGetStringParam(1,"");                     // текст из RS в кодировке 866
@@ -434,7 +455,9 @@ public:
             WideCharToMultiByte( CP_UTF8, 0, message_buff, -1, messagebody, messagebody_len, 0, 0);  // UTF-16 -> UTF-8
             free(message_buff);
 
+
             char * routing_key = rsGetStringParam(2,"");
+            if (m_verbose.value.boolval) print("SendText(%s,%s)...\n", messagebody, routing_key);
             { // 
 
                 amqp_basic_properties_t props;
@@ -472,11 +495,17 @@ public:
                 }
 
                 props.delivery_mode = 2; /* persistent delivery mode */
-                if(set_ampq_error(amqp_basic_publish(conn, 1, amqp_cstring_bytes(m_exch.value.string),
-                                                    amqp_cstring_bytes(routing_key), 0, 0,
-                                                    &props, amqp_cstring_bytes(messagebody)),
+                if (set_ampq_error(amqp_basic_publish(conn, 
+                                                      1, 
+                                                      amqp_cstring_bytes(m_exch.value.string),
+                                                      amqp_cstring_bytes(routing_key), 
+                                                      m_mandatory.value.boolval, // mandatory	indicate to the broker that the message MUST be routed to a queue. If the broker cannot do this it should respond with a basic.reject method.
+                                                      0, // immediate	indicate to the broker that the message MUST be delivered to a consumer immediately. If the broker cannot do this it should response with a basic.reject method. 
+                                                      &props, 
+                                                      amqp_cstring_bytes(messagebody)),
                                  "Send")) {
                     retVal->value.boolval=1;
+                    if (m_verbose.value.boolval) print("OK send %s %s %s\n", m_exch.value.string, routing_key, messagebody);
                 }
 
                 free(messagebody);
@@ -817,10 +846,12 @@ private:
     VALUE m_content_type;
     VALUE m_type;
     VALUE m_reply_to;
+    VALUE m_mandatory;
+    VALUE m_verbose;
     char error_buffer[256];
     amqp_connection_state_t conn;
     amqp_socket_t * socket = NULL;
-    bool flag_init=0;
+    bool flag_init = 0;
     uint64_t last_delivery_tag = 0;  // delivery_tag последнего полученного сообщения
     char last_routing_key[256];  // 
     char last_exchange[256];  // 
@@ -847,6 +878,8 @@ RSL_CLASS_BEGIN(TNuPogodi)
     RSL_PROP_EX    (ContentType,    m_content_type,  -1, V_STRING,  0)
     RSL_PROP_EX    (Type,           m_type,          -1, V_STRING,  0)
     RSL_PROP_EX    (ReplyTo,        m_reply_to,      -1, V_STRING,  0)
+    RSL_PROP_EX    (Mandatory,      m_mandatory,     -1, V_BOOL,    0)
+    RSL_PROP_EX    (Verbose,        m_verbose,       -1, V_BOOL,    0)
 
     RSL_PROP_EX    (error,          m_error,         -1, V_STRING,  VAL_FLAG_RDONLY)
     RSL_PROP_EX    (LastResultCode, m_last_result,   -1, V_INTEGER, VAL_FLAG_RDONLY)
@@ -868,8 +901,6 @@ RSL_CLASS_BEGIN(TNuPogodi)
 
     RSL_INIT
 RSL_CLASS_END  
-
-
 
 EXP32 void DLMAPI EXP AddModuleObjects (void) {
     RslAddUniClass (TNuPogodi::TablePtr,true);
