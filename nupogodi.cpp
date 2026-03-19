@@ -4,7 +4,7 @@
 #include "mssup.h"
 #include <map>
 #include <amqp_tcp_socket.h>
-
+#include <stdexcept>
 
 char * rsGetStringParam(int iParam, char * defStr) {
     VALUE *vString;
@@ -547,109 +547,115 @@ public:
     RSL_METHOD_DECL(ReadQueue) {
         ValueClear (retVal);
 
-        if (!flag_queue_opened) {
-            _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "NUPOGODI ERROR. use OpenQueue before ReadQueue");
-            return 0;
-        }
+        try {
+            if (!flag_queue_opened) {
+                _snprintf_s(error_buffer,sizeof(error_buffer), _TRUNCATE, "NUPOGODI ERROR. use OpenQueue before ReadQueue");
+                return 0;
+            }
 
-        last_delivery_tag = 0;
-        m_last_result.value.intval = 0;
-        m_library_error.value.intval = 0;
+            last_delivery_tag = 0;
+            m_last_result.value.intval = 0;
+            m_library_error.value.intval = 0;
 
-        struct timeval timeout;
-        //memset(&timeout,0,sizeof(timeout));
-        timeout.tv_sec = m_queue_timeout.value.intval;
-        timeout.tv_usec = 0;
+            struct timeval timeout;
+            //memset(&timeout,0,sizeof(timeout));
+            timeout.tv_sec = m_queue_timeout.value.intval;
+            timeout.tv_usec = 0;
 
-        amqp_rpc_reply_t res;
-        amqp_envelope_t envelope;
+            amqp_rpc_reply_t res;
+            amqp_envelope_t envelope;
 
-        amqp_maybe_release_buffers(conn);
+            amqp_maybe_release_buffers(conn);
 
-        res = amqp_consume_message(conn, &envelope, &timeout, 0);
-           
-        m_last_result.value.intval = res.reply_type; // сохраняем полученное значение кода возврата в свойство
-        m_library_error.value.intval = res.library_error;
+            res = amqp_consume_message(conn, &envelope, &timeout, 0);
+               
+            m_last_result.value.intval = res.reply_type; // сохраняем полученное значение кода возврата в свойство
+            m_library_error.value.intval = res.library_error;
 
-        set_socket_error(res, "Getting envelop from queue");
+            set_socket_error(res, "Getting envelop from queue");
 
-        if (AMQP_RESPONSE_NONE == res.reply_type) {
-            return 0;
-        }
+            if (AMQP_RESPONSE_NONE == res.reply_type) {
+                return 0;
+            }
 
-        if (AMQP_RESPONSE_LIBRARY_EXCEPTION == res.reply_type &&
-            AMQP_STATUS_UNEXPECTED_STATE    == res.library_error) {
-            amqp_frame_t frame;
-            amqp_simple_wait_frame(conn, &frame);
-            return 0;
-        }
+            if (AMQP_RESPONSE_LIBRARY_EXCEPTION == res.reply_type &&
+                AMQP_STATUS_UNEXPECTED_STATE    == res.library_error) {
+                amqp_frame_t frame;
+                amqp_simple_wait_frame(conn, &frame);
+                return 0;
+            }
 
-        if (AMQP_RESPONSE_NORMAL != res.reply_type) {
-            return 0;
-        }
+            if (AMQP_RESPONSE_NORMAL != res.reply_type) {
+                return 0;
+            }
 
-        last_delivery_tag = envelope.delivery_tag;
-        strncpy(last_routing_key, (char *)envelope.routing_key.bytes, min(envelope.routing_key.len, sizeof(last_routing_key)-1));
-        last_routing_key[min(envelope.routing_key.len, sizeof(last_routing_key)-1)] = '\0';
-        strncpy(last_exchange,    (char *)envelope.exchange.bytes,    min(envelope.exchange.len,    sizeof(last_exchange)-1));
-        last_exchange[min(envelope.exchange.len, sizeof(last_exchange)-1)] = '\0';
+            last_delivery_tag = envelope.delivery_tag;
+            strncpy(last_routing_key, (char *)envelope.routing_key.bytes, min(envelope.routing_key.len, sizeof(last_routing_key)-1));
+            last_routing_key[min(envelope.routing_key.len, sizeof(last_routing_key)-1)] = '\0';
+            strncpy(last_exchange,    (char *)envelope.exchange.bytes,    min(envelope.exchange.len,    sizeof(last_exchange)-1));
+            last_exchange[min(envelope.exchange.len, sizeof(last_exchange)-1)] = '\0';
 
-        //print("Delivery %u, exchange %.*s routingkey %.*s\n",
-        //       (unsigned)envelope.delivery_tag, (int)envelope.exchange.len,
-        //       (char *)envelope.exchange.bytes, (int)envelope.routing_key.len,
-        //       (char *)envelope.routing_key.bytes);
+            //print("Delivery %u, exchange %.*s routingkey %.*s\n",
+            //       (unsigned)envelope.delivery_tag, (int)envelope.exchange.len,
+            //       (char *)envelope.exchange.bytes, (int)envelope.routing_key.len,
+            //       (char *)envelope.routing_key.bytes);
 
-        if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
-            nupogodiAmpqPropToRsVal(envelope.message.properties.content_type, &m_content_type);
-            //ValueClear(&m_content_type);
-            //ValueSet(&m_content_type, V_STRING, envelope.message.properties.content_type.bytes);
-        } else {
-            int v = 0;
-            ValueSet(&m_content_type, V_UNDEF, &v);
-        }
-
-        if (envelope.message.properties._flags & AMQP_BASIC_REPLY_TO_FLAG) {
-            nupogodiAmpqPropToRsVal(envelope.message.properties.reply_to, &m_reply_to);
-            // ValueClear(&m_reply_to);
-            // ValueSet(&m_reply_to, V_STRING, envelope.message.properties.reply_to.bytes);
-        } else {
-            int v = 0;
-            ValueSet(&m_reply_to, V_UNDEF, &v);
-        }
-
-        read_headers(envelope.message.properties.headers);
-
-        //if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
-        //  print("Content-type: %.*s\n",
-        //         (int)envelope.message.properties.content_type.len,
-        //         (char *)envelope.message.properties.content_type.bytes);
-        //}
-
-        if (AMQP_RESPONSE_NORMAL == res.reply_type) {
-
-            int char_count = MultiByteToWideChar(CP_UTF8, 0, (char *)envelope.message.body.bytes, envelope.message.body.len, NULL, 0);
-            if(char_count > 0 && char_count != 0xFFFD) {
-                wchar_t * wbuff= (wchar_t *)malloc(char_count*sizeof(wchar_t));
-                MultiByteToWideChar(CP_UTF8, 0, (char *)envelope.message.body.bytes, envelope.message.body.len, wbuff, char_count);
-                char * message_buff=(char *)malloc((char_count+1)*sizeof(char));
-                WideCharToMultiByte(866, 0, wbuff, char_count, message_buff, char_count, 0, 0);
-                message_buff[char_count]='\0';
-                free(wbuff);
-                ValueSet (retVal,V_STRING,(void *)message_buff);
-                free(message_buff);
+            if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
+                nupogodiAmpqPropToRsVal(envelope.message.properties.content_type, &m_content_type);
+                //ValueClear(&m_content_type);
+                //ValueSet(&m_content_type, V_STRING, envelope.message.properties.content_type.bytes);
             } else {
-                ValueSet (retVal,V_STRING,"");
+                int v = 0;
+                ValueSet(&m_content_type, V_UNDEF, &v);
             }
 
-            if (m_auto_ack.value.intval) {
-                if (0 == amqp_basic_ack(conn, 1, last_delivery_tag, false)) {
-                    last_delivery_tag = 0;
+            if (envelope.message.properties._flags & AMQP_BASIC_REPLY_TO_FLAG) {
+                nupogodiAmpqPropToRsVal(envelope.message.properties.reply_to, &m_reply_to);
+                // ValueClear(&m_reply_to);
+                // ValueSet(&m_reply_to, V_STRING, envelope.message.properties.reply_to.bytes);
+            } else {
+                int v = 0;
+                ValueSet(&m_reply_to, V_UNDEF, &v);
+            }
+
+            read_headers(envelope.message.properties.headers);
+
+            //if (envelope.message.properties._flags & AMQP_BASIC_CONTENT_TYPE_FLAG) {
+            //  print("Content-type: %.*s\n",
+            //         (int)envelope.message.properties.content_type.len,
+            //         (char *)envelope.message.properties.content_type.bytes);
+            //}
+
+            if (AMQP_RESPONSE_NORMAL == res.reply_type) {
+
+                int char_count = MultiByteToWideChar(CP_UTF8, 0, (char *)envelope.message.body.bytes, envelope.message.body.len, NULL, 0);
+                if(char_count > 0 && char_count != 0xFFFD) {
+                    wchar_t * wbuff= (wchar_t *)malloc(char_count*sizeof(wchar_t));
+                    MultiByteToWideChar(CP_UTF8, 0, (char *)envelope.message.body.bytes, envelope.message.body.len, wbuff, char_count);
+                    char * message_buff=(char *)malloc((char_count+1)*sizeof(char));
+                    WideCharToMultiByte(866, 0, wbuff, char_count, message_buff, char_count, 0, 0);
+                    message_buff[char_count]='\0';
+                    free(wbuff);
+                    ValueSet (retVal,V_STRING,(void *)message_buff);
+                    free(message_buff);
+                } else {
+                    ValueSet (retVal,V_STRING,"");
                 }
+
+                if (m_auto_ack.value.intval) {
+                    if (0 == amqp_basic_ack(conn, 1, last_delivery_tag, false)) {
+                        last_delivery_tag = 0;
+                    }
+                }
+
             }
 
+            amqp_destroy_envelope(&envelope);
+        } catch (const std::exception& e) {
+            RslError((char *)e.what());
+        } catch (...) {
+            RslError("ReadQueue error");
         }
-
-        amqp_destroy_envelope(&envelope);
 
         return 0;
     }
