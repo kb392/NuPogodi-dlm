@@ -519,24 +519,31 @@ public:
         ValueClear (retVal);
         char * queue_name = rsGetStringParam(1, NULL); // нет значения по умолчанию
 
-        m_last_result.value.intval = 0;
-        m_library_error.value.intval = 0;
+        try {
+            m_last_result.value.intval = 0;
+            m_library_error.value.intval = 0;
 
-        flag_queue_opened = 0;
-        if (socket_open()) {
+            flag_queue_opened = 0;
+            if (socket_open()) {
+                if (m_verbose.value.boolval) print("Consuming queue=%s tag=%s ...\n", queue_name, consumer_tag);
+                amqp_basic_consume(conn,                            // state connection state
+                                   1,                               // channel the channel to do the RPC on
+                                   amqp_cstring_bytes(queue_name),  // queue
+                                   amqp_cstring_bytes(consumer_tag), // consumer_tag (was amqp_empty_bytes)
+                                   0,                               // no_local
+                                   m_no_ack.value.boolval,          // no_ack
+                                   0,                               // exclusive
+                                   amqp_empty_table);               // arguments
 
-            amqp_basic_consume(conn,                            // state connection state
-                               1,                               // channel the channel to do the RPC on
-                               amqp_cstring_bytes(queue_name),  // queue
-                               amqp_cstring_bytes(consumer_tag), // consumer_tag (was amqp_empty_bytes)
-                               0,                               // no_local
-                               m_no_ack.value.boolval,          // no_ack
-                               0,                               // exclusive
-                               amqp_empty_table);               // arguments
+                if (set_socket_error(amqp_get_rpc_reply(conn), "Consuming"))
+                    flag_queue_opened = 1;
 
-            if (set_socket_error(amqp_get_rpc_reply(conn), "Consuming"))
-                flag_queue_opened = 1;
+            }
 
+        } catch (const std::exception& e) {
+            RslError((char *)e.what());
+        } catch (...) {
+            RslError("OpenQueue error");
         }
 
         ReturnVal (V_BOOL, &flag_queue_opened);
@@ -651,6 +658,7 @@ public:
             }
 
             amqp_destroy_envelope(&envelope);
+
         } catch (const std::exception& e) {
             RslError((char *)e.what());
         } catch (...) {
@@ -780,7 +788,8 @@ public:
 
         try {
             std::string ret_string = str_headers.at(std::string(header_name));
-            ValueSet (retVal, V_STRING, (void *)ret_string.c_str());
+            ValueSet(retVal, V_STRING, (void *)ret_string.c_str());
+            if (header_name) free (header_name);
         }
         catch(const std::out_of_range& ex) {
             // ничего не делаем, возвращаем null
